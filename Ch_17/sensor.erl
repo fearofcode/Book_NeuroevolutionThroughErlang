@@ -9,23 +9,23 @@
 -compile(export_all).
 -include("records.hrl").
 
-gen(ExoSelf_PId,Node)->
-	spawn(Node,?MODULE,prep,[ExoSelf_PId]).
+gen(ExoSelfProcess,Node)->
+	spawn(Node,?MODULE,prep,[ExoSelfProcess]).
 
-prep(ExoSelf_PId) ->
+prep(ExoSelfProcess) ->
 	receive 
-		{ExoSelf_PId,{Id,Cx_PId,Scape,SensorName,VL,Parameters,Fanout_PIds}} ->
-			loop(Id,ExoSelf_PId,Cx_PId,Scape,SensorName,VL,Parameters,Fanout_PIds)
+		{ExoSelfProcess,{Id,CortexProcess,Scape,SensorName,VL,Parameters,FanoutProcess}} ->
+			loop(Id,ExoSelfProcess,CortexProcess,Scape,SensorName,VL,Parameters,FanoutProcess)
 	end.
 %When gen/2 is executed it spawns the sensor element and immediately begins to wait for its initial state message.
 
-loop(Id,ExoSelf_PId,Cx_PId,Scape,SensorName,VL,Parameters,Fanout_PIds)->
+loop(Id,ExoSelfProcess,CortexProcess,Scape,SensorName,VL,Parameters,FanoutProcess)->
 	receive
-		{Cx_PId,sync}->
+		{CortexProcess,sync}->
 			SensoryVector = sensor:SensorName(VL,Parameters,Scape),
-			[Pid ! {self(),forward,SensoryVector} || Pid <- Fanout_PIds],
-			loop(Id,ExoSelf_PId,Cx_PId,Scape,SensorName,VL,Parameters,Fanout_PIds);
-		{ExoSelf_PId,terminate} ->
+			[Pid ! {self(),forward,SensoryVector} || Pid <- FanoutProcess],
+			loop(Id,ExoSelfProcess,CortexProcess,Scape,SensorName,VL,Parameters,FanoutProcess);
+		{ExoSelfProcess,terminate} ->
 			%io:format("Sensor:~p is terminating.~n",[Id]),
 			ok
 	end.
@@ -36,7 +36,7 @@ rng(VL,_Scape)->
 rng1(0,Acc)->
 	Acc;
 rng1(VL,Acc)-> 
-	rng1(VL-1,[random:uniform()|Acc]).
+	rng1(VL-1,[rand:uniform()|Acc]).
 %rng/2 is a simple random number generator that produces a vector of random values, each between 0 and 1. The length of the vector is defined by the VL, which itself is specified within the sensor record.
 
 xor_GetInput(VL,_Parameters,Scape)->

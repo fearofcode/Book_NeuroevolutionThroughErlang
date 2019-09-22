@@ -9,24 +9,24 @@
 -compile(export_all).
 -include("records.hrl").
 
-gen(ExoSelf_PId,Node)->
-	spawn(Node,?MODULE,prep,[ExoSelf_PId]).
+gen(ExoSelfProcess,Node)->
+	spawn(Node,?MODULE,prep,[ExoSelfProcess]).
 
-prep(ExoSelf_PId) ->
+prep(ExoSelfProcess) ->
 	receive 
-		{ExoSelf_PId,Name} ->
-			scape:Name(ExoSelf_PId)
+		{ExoSelfProcess,Name} ->
+			scape:Name(ExoSelfProcess)
 	end.
 
-xor_sim(ExoSelf_PId)->
+xor_sim(ExoSelfProcess)->
 	XOR = [{[-1,-1],[-1]},{[1,-1],[1]},{[-1,1],[1]},{[1,1],[-1]}],
-	xor_sim(ExoSelf_PId,{XOR,XOR},0).
+	xor_sim(ExoSelfProcess,{XOR,XOR},0).
 	
-xor_sim(ExoSelf_PId,{[{Input,CorrectOutput}|XOR],MXOR},ErrAcc) ->
+xor_sim(ExoSelfProcess,{[{Input,CorrectOutput}|XOR],MXOR},ErrAcc) ->
 	receive 
 		{From,sense} ->
 			From ! {self(),percept,Input},
-			xor_sim(ExoSelf_PId,{[{Input,CorrectOutput}|XOR],MXOR},ErrAcc);
+			xor_sim(ExoSelfProcess,{[{Input,CorrectOutput}|XOR],MXOR},ErrAcc);
 		{From,action,Output}->
 			Error = sse(Output,CorrectOutput,0),
 			%io:format("{Output,TargetOutput}:~p~n",[{Output,CorrectOutput}]),
@@ -35,12 +35,12 @@ xor_sim(ExoSelf_PId,{[{Input,CorrectOutput}|XOR],MXOR},ErrAcc) ->
 					SSE = ErrAcc+Error,
 					Fitness = 1/(SSE+0.000001),
 					From ! {self(),Fitness,1},
-					xor_sim(ExoSelf_PId,{MXOR,MXOR},0);
+					xor_sim(ExoSelfProcess,{MXOR,MXOR},0);
 				_ ->
 					From ! {self(),0,0},
-					xor_sim(ExoSelf_PId,{XOR,MXOR},ErrAcc+Error)
+					xor_sim(ExoSelfProcess,{XOR,MXOR},ErrAcc+Error)
 			end;
-		{ExoSelf_PId,terminate}->
+		{ExoSelfProcess,terminate}->
 			ok
 	end.
 

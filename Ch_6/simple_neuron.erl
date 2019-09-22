@@ -9,7 +9,7 @@
 -compile(export_all).
 
 create()->
-	Weights = [random:uniform()-0.5,random:uniform()-0.5,random:uniform()-0.5],
+	Weights = [rand:uniform()-0.5,rand:uniform()-0.5,rand:uniform()-0.5],
 	register(neuron, spawn(?MODULE,loop,[Weights])).
 %The create function spawns a single neuron, where the weights and the bias are generated randomly to be between -0.5 and 0.5.
 

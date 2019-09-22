@@ -5,12 +5,12 @@
 %
 %This code is licensed under the version 3 of the GNU General Public License. Please see the LICENSE file that accompanies this project for the terms of use.
 
--record(sensor,{id,name,type,cx_id,scape,vl,fanout_ids=[],generation,format,parameters,phys_rep,vis_rep,pre_f,post_f}). 
--record(actuator,{id,name,type,cx_id,scape,vl,fanin_ids=[],generation,format,parameters,phys_rep,vis_rep,pre_f,post_f}).
--record(neuron, {id, generation, cx_id, af, pf, aggr_f, input_idps=[], input_idps_modulation=[], output_ids=[], ro_ids=[]}).
+-record(sensor,{id,name,type,cortex_id,scape,vector_length,fanout_ids=[],generation,format,parameters,phys_rep,vis_rep,pre_f,post_f}). 
+-record(actuator,{id,name,type,cortex_id,scape,vector_length,fanin_ids=[],generation,format,parameters,phys_rep,vis_rep,pre_f,post_f}).
+-record(neuron, {id, generation, cortex_id, af, pf, aggr_f, weighted_inputs=[], weighted_inputs_modulation=[], output_ids=[], ro_ids=[]}).
 -record(cortex, {id, agent_id, neuron_ids=[], sensor_ids=[], actuator_ids=[]}).
 -record(substrate, {id, agent_id, densities, linkform, plasticity=none, cpp_ids=[],cep_ids=[]}). 
--record(agent,{id, encoding_type, generation, population_id, specie_id, cx_id, fingerprint, constraint, evo_hist=[], fitness=0, innovation_factor=0, pattern=[], tuning_selection_f, annealing_parameter, tuning_duration_f, perturbation_range, mutation_operators,tot_topological_mutations_f,heredity_type,substrate_id}).
+-record(agent,{id, encoding_type, generation, population_id, specie_id, cortex_id, fingerprint, constraint, evo_hist=[], fitness=0, innovation_factor=0, pattern=[], tuning_selection_f, annealing_parameter, tuning_duration_f, perturbation_range, mutation_operators,tot_topological_mutations_f,heredity_type,substrate_id}).
 -record(specie,{id, population_id, fingerprint, constraint, agent_ids=[], dead_pool=[], champion_ids=[], fitness, innovation_factor={0,0},stats=[]}).
 -record(trace,{stats=[],tot_evaluations=0,step_size=500}).
 -record(population,{id, polis_id, specie_ids=[], morphologies=[], innovation_factor, evo_alg_f, fitness_postprocessor_f, selection_f, trace=#trace{}}).
@@ -79,9 +79,9 @@
 %%% sensor:
 %id= {{-1::LayerCoordinate, float()::Unique_Id()}, sensor}
 %name= atom()
-%cx_id= cortex.id
+%cortex_id= cortex.id
 %scape= {private|public, atom()::ScapeName}
-%vl= int()
+%vector_length= int()
 %fanout_ids= [neuron.id...]
 %generation=int()
 %format= {no_geo|geo,[int()::Resolution...]}
@@ -94,9 +94,9 @@
 %%%actuator:
 %id= {{1::LayerCoordinate,generate_UniqueId()},actuator}
 %name= atom()
-%cx_id= cortex.id
+%cortex_id= cortex.id
 %scape= {private|public, atom()::ScapeName}
-%vl= int()
+%vector_length= int()
 %fanout_ids= [neuron.id...]
 %generation=int()
 %format= {no_geo|geo,[int()::Resolution...]}
@@ -109,11 +109,11 @@
 %%%neuron:
 %id= {{float()::LayerCoordinate, float()::Unique_Id},neuron}
 %generation= int()
-%cx_id= cortex.id
+%cortex_id= cortex.id
 %af= atom()::FunctionName
 %pf= {atom()::FunctionName,any()::ParameterList}
 %aggr_f= atom()::FunctionName
-%input_idps= [{Input_Id,WeightsP},{neuron.id|sensor.id,[{float()::Weight,any()::ParameterList}...]}...]
+%weighted_inputs= [{Input_Id,WeightsP},{neuron.id|sensor.id,[{float()::Weight,any()::ParameterList}...]}...]
 %output_ids= [neuron.id|actuator.id...]
 %ro_ids= [neuron.id...]
 
@@ -130,7 +130,7 @@
 %generation= int()
 %population_id= population.id
 %specie_id= specie.id
-%cx_id= cortex.id
+%cortex_id= cortex.id
 %fingerprint= fingerprint()
 %constraint= constraint()
 %evo_hist= [OperatorAppllied...]
@@ -171,13 +171,13 @@
 %%%fingerprint:
 %generalized_sensors= [sensor()::init...]
 %	sensor.id = undefined
-%	sensor.cx_id = undefined
+%	sensor.cortex_id = undefined
 %	sensor.fanout_ids = []
 %generlized_actuators= [actuator()::init...]
 %	actuator.id = undefined
-%	actuator.cx_id = undefined
+%	actuator.cortex_id = undefined
 %	actuator.fanin_ids = []
-%generalized_pattern= [{float()::LayerCoordinate,int()::TotNeurons}...]
+%generalized_pattern= [{float()::LayerCoordinate,int()::TotalNeurons}...]
 %generalized_evohist= [GeneralizedOperatorApplied...]
 %	{atom()::MO_Name,{float()::ElementA_LayerCoordinate,atom()::ElementA_Type},{ElementB_LayerCoordinate,ElementB_Type},{ElementC_LayerCoordinate,ElementC_Type}},
 %	{atom()::MO_Name,{float()::ElementA_LayerCoordinate,atom()::ElementA_Type},{ElementB_LayerCoordinate,ElementB_Type}},

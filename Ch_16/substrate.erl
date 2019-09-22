@@ -27,22 +27,22 @@
 	link_form
 }).
 
-gen(ExoSelf_PId,Node)->
-	spawn(Node,?MODULE,prep,[ExoSelf_PId]).
+gen(ExoSelfProcess,Node)->
+	spawn(Node,?MODULE,prep,[ExoSelfProcess]).
 
 prep(ExoSelf)->
 	random:seed(now()),
 	receive
 		{ExoSelf,init,InitState}->
-			{Sensors,Actuators,SPIds,APIds,CPP_PIds,CEP_PIds,Densities,Plasticity,LinkForm}=InitState,
+			{Sensors,Actuators,SensorProcess,ActuatorProcess,CPPProcess,CEPProcess,Densities,Plasticity,LinkForm}=InitState,
 			%io:format("InitState:~p~n",[InitState]),
 			S = #state{
 				sensors=Sensors,
 				actuators=Actuators,
-				spids=SPIds,
-				apids=APIds,
-				cpp_pids=CPP_PIds,
-				cep_pids=CEP_PIds,
+				spids=SensorProcess,
+				apids=ActuatorProcess,
+				cpp_pids=CPPProcess,
+				cep_pids=CEPProcess,
 				densities = Densities,
 				substrate_state_flag=reset,
 				old_substrate=void,
@@ -50,20 +50,20 @@ prep(ExoSelf)->
 				plasticity=Plasticity,
 				link_form = LinkForm
 			},
-			substrate:loop(ExoSelf,S,SPIds,[])
+			substrate:loop(ExoSelf,S,SensorProcess,[])
 	end.
 
-loop(ExoSelf,S,[SPId|SPIds],SAcc)->
+loop(ExoSelf,S,[SensorProcess|SensorProcess],SAcc)->
 	receive
-		{SPId,forward,Sensory_Signal}->
-			loop(ExoSelf,S,SPIds,[Sensory_Signal|SAcc]);
+		{SensorProcess,forward,Sensory_Signal}->
+			loop(ExoSelf,S,SensorProcess,[Sensory_Signal|SAcc]);
 		{ExoSelf,reset_substrate}->
 			U_S = S#state{
 				old_substrate=S#state.cur_substrate,
 				substrate_state_flag=reset
 			},
 			ExoSelf ! {self(),ready},
-			loop(ExoSelf,U_S,[SPId|SPIds],SAcc);
+			loop(ExoSelf,U_S,[SensorProcess|SensorProcess],SAcc);
 		{ExoSelf,backup_substrate} ->
 %			io:format("reseting:~n"),
 			U_S = S#state{
@@ -71,7 +71,7 @@ loop(ExoSelf,S,[SPId|SPIds],SAcc)->
 				substrate_state_flag=reset
 			},
 			ExoSelf ! {self(),ready},
-			loop(ExoSelf,U_S,[SPId|SPIds],SAcc);
+			loop(ExoSelf,U_S,[SensorProcess|SensorProcess],SAcc);
 		{ExoSelf,revert_substrate} ->
 %			io:format("reverting:~n"),
 			U_S = S#state{
@@ -79,7 +79,7 @@ loop(ExoSelf,S,[SPId|SPIds],SAcc)->
 				substrate_state_flag=reset
 			},
 			ExoSelf ! {self(),ready},
-			loop(ExoSelf,U_S,[SPId|SPIds],SAcc);
+			loop(ExoSelf,U_S,[SensorProcess|SensorProcess],SAcc);
 		{ExoSelf,terminate}->
 %			io:format("Resulting substrate:~p~n",[Substrate]),
 			void
@@ -103,12 +103,12 @@ reason(Input,S)->
 		reset ->%io:format("reset~n"),
 			Sensors=S#state.sensors,
 			Actuators=S#state.actuators,
-			CPP_PIds = S#state.cpp_pids,
-			CEP_PIds = S#state.cep_pids,
+			CPPProcess = S#state.cpp_pids,
+			CEPProcess = S#state.cep_pids,
 			Plasticity = S#state.plasticity,
 			New_Substrate = create_substrate(Sensors,Densities,Actuators,S#state.link_form),
 			%io:format("New_Substrate:~p~n",[New_Substrate]),
-			{Output,Populated_Substrate} = calculate_ResetOutput(Densities,New_Substrate,Input,CPP_PIds,CEP_PIds,Plasticity,S#state.link_form),
+			{Output,Populated_Substrate} = calculate_ResetOutput(Densities,New_Substrate,Input,CPPProcess,CEPProcess,Plasticity,S#state.link_form),
 			%io:format("New_Substrate:~p~n Output:~p~n Populated_Substrate:~p~n",[New_Substrate,Output,Populated_Substrate]),
 			U_SMode=case Plasticity of
 				iterative ->
@@ -122,9 +122,9 @@ reason(Input,S)->
 			end,
 			{Populated_Substrate,U_SMode,Output};
 		iterative ->%io:format("Iterative~n"),
-			CPP_PIds = S#state.cpp_pids,
-			CEP_PIds = S#state.cep_pids,
-			{Output,U_Substrate} = calculate_IterativeOutput(Densities,Substrate,Input,CPP_PIds,CEP_PIds),
+			CPPProcess = S#state.cpp_pids,
+			CEPProcess = S#state.cep_pids,
+			{Output,U_Substrate} = calculate_IterativeOutput(Densities,Substrate,Input,CPPProcess,CEPProcess),
 %			io:format("Output:~p~n Densities:~p~n Substrate:~p~n U_Substrate:~p~n CT:~p~n CF:~p~n",[Output,Densities,Substrate,U_Substrate,CT,CF]),
 			{U_Substrate,SMode,Output};
 		hold ->%io:format("hold~n"),
@@ -133,10 +133,10 @@ reason(Input,S)->
 			{U_Substrate,SMode,Output}
 	end.
 
-advanced_fanout(OAcc,[Actuator|Actuators],[APId|APIds])->
-	{Output,OAccRem}=lists:split(Actuator#actuator.vl,OAcc),
-	APId ! {self(),forward,Output},
-	advanced_fanout(OAccRem,Actuators,APIds);
+advanced_fanout(OAcc,[Actuator|Actuators],[ActuatorProcess|ActuatorProcess])->
+	{Output,OAccRem}=lists:split(Actuator#actuator.vector_length,OAcc),
+	ActuatorProcess ! {self(),forward,Output},
+	advanced_fanout(OAccRem,Actuators,ActuatorProcess);
 advanced_fanout([],[],[])->
 	ok.
 %%==================================================================== Internal Functions
@@ -160,19 +160,19 @@ end.
 %	coorded, every val comes with its own coord tuple: {Coord,Val}. The coord is a list, thus specifying the dimensionality.
 test_cs()->
 	Sensors = [
-		#sensor{format=no_geo,vl=3},
-		#sensor{format={symetric,lists:reverse([2,3])},vl=6}
+		#sensor{format=no_geo,vector_length=3},
+		#sensor{format={symetric,lists:reverse([2,3])},vector_length=6}
 	],
 	Actuators = [
-		#actuator{format=no_geo,vl=2},
-		#actuator{format={symetric,lists:reverse([3,2])},vl=6}
+		#actuator{format=no_geo,vector_length=2},
+		#actuator{format={symetric,lists:reverse([3,2])},vector_length=6}
 	],
 	create_substrate(Sensors,[3,2,3,2],Actuators,l2l_feedforward).
 	
 test_IS(SubstrateDimension)->
 	Sensors = [
-		#sensor{format=no_geo,vl=10},
-		#sensor{format={symetric,lists:reverse([3,4])},vl=[
+		#sensor{format=no_geo,vector_length=10},
+		#sensor{format={symetric,lists:reverse([3,4])},vector_length=[
 		1,-1,-1,-1,
 		1,-1,-1,-1,
 		1,1,1,1]}
@@ -181,8 +181,8 @@ test_IS(SubstrateDimension)->
 
 test_OS(SubstrateDimension)->
 	Actuators = [
-		#actuator{format=no_geo,vl=10},
-		#actuator{format={symetric,lists:reverse([3,4])},vl=[
+		#actuator{format=no_geo,vector_length=10},
+		#actuator{format={symetric,lists:reverse([3,4])},vector_length=[
 		1,-1,-1,-1,
 		1,-1,-1,-1,
 		1,1,1,1]}
@@ -192,31 +192,31 @@ test_OS(SubstrateDimension)->
 create_substrate(Sensors,Densities,Actuators,LinkForm)->
 	[Depth|SubDensities] = Densities,
 	Substrate_I = compose_ISubstrate(Sensors,length(Densities)),
-	I_VL = length(Substrate_I),
-%	io:format("I_VL:~p~n",[I_VL]),
+	IVL = length(Substrate_I),
+%	io:format("IVL:~p~n",[IVL]),
 	case LinkForm of
 		l2l_feedforward ->
 			Weight = 0,
 			H = mult(SubDensities),
-			IWeights = lists:duplicate(I_VL,Weight),
+			IWeights = lists:duplicate(IVL,Weight),
 			HWeights = lists:duplicate(H,Weight);
 		fully_interconnected ->
 			Output_Neurodes = tot_ONeurodes(Actuators,0),
 			Weight = 0,
-			Tot_HiddenNeurodes = mult([Depth-1|SubDensities]),
-			Tot_Weights = Tot_HiddenNeurodes + I_VL + Output_Neurodes,
-			IWeights = lists:duplicate(Tot_Weights,Weight),
-			HWeights = lists:duplicate(Tot_Weights,Weight);
+			Total_HiddenNeurodes = mult([Depth-1|SubDensities]),
+			Total_Weights = Total_HiddenNeurodes + IVL + Output_Neurodes,
+			IWeights = lists:duplicate(Total_Weights,Weight),
+			HWeights = lists:duplicate(Total_Weights,Weight);
 		jordan_recurrent ->
 			Output_Neurodes = tot_ONeurodes(Actuators,0),
 			Weight = 0,
 			H = mult(SubDensities),
-			IWeights = lists:duplicate(I_VL+Output_Neurodes,Weight),
+			IWeights = lists:duplicate(IVL+Output_Neurodes,Weight),
 			HWeights = lists:duplicate(H,Weight);
 		neuronself_recurrent ->
 			Weight = 0,
 			H = mult(SubDensities),
-			IWeights = lists:duplicate(I_VL+1,Weight),
+			IWeights = lists:duplicate(IVL+1,Weight),
 			HWeights = lists:duplicate(H+1,Weight)
 	end,	
 	case Depth of
@@ -249,12 +249,12 @@ create_substrate(Sensors,Densities,Actuators,LinkForm)->
 		case S#sensor.format of
 			undefined ->
 				Dim=1,
-				CoordLists = create_CoordLists([S#sensor.vl]),
+				CoordLists = create_CoordLists([S#sensor.vector_length]),
 				ISubstrate_Part=[{Coord,0,void}|| Coord<-CoordLists],
 				{Dim,ISubstrate_Part};
 			no_geo ->
 				Dim=1,
-				CoordLists = create_CoordLists([S#sensor.vl]),
+				CoordLists = create_CoordLists([S#sensor.vector_length]),
 				ISubstrate_Part=[{Coord,0,void}|| Coord<-CoordLists],
 				{Dim,ISubstrate_Part};
 			{symetric,Resolutions}->
@@ -303,12 +303,12 @@ create_substrate(Sensors,Densities,Actuators,LinkForm)->
 		case A#actuator.format of
 			undefined ->%Dim=void,OSubstrate_Part=void,
 				Dim=1,
-				CoordLists = create_CoordLists([A#actuator.vl]),
+				CoordLists = create_CoordLists([A#actuator.vector_length]),
 				OSubstrate_Part=[{Coord,0,Weights}|| Coord<-CoordLists],
 				{Dim,OSubstrate_Part};
 			no_geo ->%Dim=void,OSubstrate_Part=void,
 				Dim=1,
-				CoordLists = create_CoordLists([A#actuator.vl]),
+				CoordLists = create_CoordLists([A#actuator.vector_length]),
 				OSubstrate_Part=[{Coord,0,Weights}|| Coord<-CoordLists],
 				{Dim,OSubstrate_Part};
 			{symetric,Resolutions}->%Dim=void,OSubstrate_Part=void,
@@ -372,17 +372,17 @@ create_substrate(Sensors,Densities,Actuators,LinkForm)->
 				Acc.
 
 tot_ONeurodes([A|Actuators],Acc)->
-	Tot_ANeurodes=case A#actuator.format of
+	Total_ANeurodes=case A#actuator.format of
 		undefined ->
-			A#actuator.vl;
+			A#actuator.vector_length;
 		no_geo ->
-			A#actuator.vl;
+			A#actuator.vector_length;
 		{symetric,Resolutions}->
 			mult(Resolutions);
 		{coorded,Dim,Resolutions,Unadjusted_OSubstrate_Part} ->
 			length(Unadjusted_OSubstrate_Part)
 	end,
-	tot_ONeurodes(Actuators,Tot_ANeurodes+Acc);
+	tot_ONeurodes(Actuators,Total_ANeurodes+Acc);
 tot_ONeurodes([],Acc)->
 	Acc.
 
@@ -428,51 +428,51 @@ extrude(_Coord,[],Acc)->
 %{VL,{actuator,Actuator,Id,Parameters}}
 %{VL,{sensor,System,Id,Parameters}}
 %CF:
-%	neural:		[{Actuator1,[N_Id1...N_Idn]},{Actuator2,[N_Id1...N_Idn]}...]
-%	hypercube:	[{CFTag1,[N_Id1...N_Idn]},{CFTag2,[N_Id2...N_Idn]}...] CFTag:[{weight,1}...]
+%	neural:		[{Actuator1,[NeuronID1...NeuronIDn]},{Actuator2,[NeuronID1...NeuronIDn]}...]
+%	hypercube:	[{CFTag1,[NeuronID1...NeuronIDn]},{CFTag2,[NeuronID2...NeuronIDn]}...] CFTag:[{weight,1}...]
 %CT:
-%	neural:		[{Sensor1,[{N_Id1,FilterTag1},{N_Id2,FilterTag2}...]}...] FilterTag:{single,Index} | {block,VL}
-%	hypercube:	[{CTTag1,[{N_Id1,FilterTag1},{N_Id2,FilterTag2}...]}...] CTTag:[{cartesian,VL}...], FilterTag:{single,Index} | {block,VL}	
-calculate_IterativeOutput(Densities,Substrate,Input,CPP_PIds,CEP_PIds)->
+%	neural:		[{Sensor1,[{NeuronID1,FilterTag1},{NeuronID2,FilterTag2}...]}...] FilterTag:{single,Index} | {block,VL}
+%	hypercube:	[{CTTag1,[{NeuronID1,FilterTag1},{NeuronID2,FilterTag2}...]}...] CTTag:[{cartesian,VL}...], FilterTag:{single,Index} | {block,VL}	
+calculate_IterativeOutput(Densities,Substrate,Input,CPPProcess,CEPProcess)->
 	[IHyperlayer|PHyperlayers] = Substrate,
 	Populated_IHyperlayer = populate_InputHyperlayer(IHyperlayer,lists:flatten(Input),[]),
-	{Output,U_PHyperlayers} = update_PHyperlayers(Populated_IHyperlayer,PHyperlayers,CPP_PIds,CEP_PIds),
+	{Output,U_PHyperlayers} = update_PHyperlayers(Populated_IHyperlayer,PHyperlayers,CPPProcess,CEPProcess),
 	{Output,[Populated_IHyperlayer|U_PHyperlayers]}.
 	
-	update_PHyperlayers(Populated_IHyperlayer,U_PHyperlayers,CPP_PIds,CEP_PIds)->
+	update_PHyperlayers(Populated_IHyperlayer,U_PHyperlayers,CPPProcess,CEPProcess)->
 		[CurPHyperlayer|RemPHyperlayers] = U_PHyperlayers,
-		update_PHyperlayers(Populated_IHyperlayer,CurPHyperlayer,RemPHyperlayers,CPP_PIds,CEP_PIds,[],[]).
+		update_PHyperlayers(Populated_IHyperlayer,CurPHyperlayer,RemPHyperlayers,CPPProcess,CEPProcess,[],[]).
 	
-		update_PHyperlayers(PrevHyperlayer,[{Coord,PrevO,PrevWeights}|CurHyperlayer],Substrate,CPP_PIds,CEP_PIds,Acc1,Acc2)->
+		update_PHyperlayers(PrevHyperlayer,[{Coord,PrevO,PrevWeights}|CurHyperlayer],Substrate,CPPProcess,CEPProcess,Acc1,Acc2)->
 			U_O=calculate_output(PrevHyperlayer,{Coord,PrevO,PrevWeights},0),
-			U_Weights = get_weights(PrevHyperlayer,Coord,CPP_PIds,CEP_PIds,[],PrevWeights,U_O),
-			update_PHyperlayers(PrevHyperlayer,CurHyperlayer,Substrate,CPP_PIds,CEP_PIds,[{Coord,U_O,U_Weights}|Acc1],Acc2);
-		update_PHyperlayers(_PrevHyperlayer,[],[CurHyperlayer|Substrate],CPP_PIds,CEP_PIds,Acc1,Acc2)->
+			U_Weights = get_weights(PrevHyperlayer,Coord,CPPProcess,CEPProcess,[],PrevWeights,U_O),
+			update_PHyperlayers(PrevHyperlayer,CurHyperlayer,Substrate,CPPProcess,CEPProcess,[{Coord,U_O,U_Weights}|Acc1],Acc2);
+		update_PHyperlayers(_PrevHyperlayer,[],[CurHyperlayer|Substrate],CPPProcess,CEPProcess,Acc1,Acc2)->
 			PrevHyperlayer = lists:reverse(Acc1),
-			update_PHyperlayers(PrevHyperlayer,CurHyperlayer,Substrate,CPP_PIds,CEP_PIds,[],[PrevHyperlayer|Acc2]);
-		update_PHyperlayers(_PrevHyperlayer,[],[],CPP_PIds,CEP_PIds,Acc1,Acc2)->
+			update_PHyperlayers(PrevHyperlayer,CurHyperlayer,Substrate,CPPProcess,CEPProcess,[],[PrevHyperlayer|Acc2]);
+		update_PHyperlayers(_PrevHyperlayer,[],[],CPPProcess,CEPProcess,Acc1,Acc2)->
 			OutputHyperlayer = lists:reverse(Acc1),
 			{[O||{_Coord,O,_Weights}<-OutputHyperlayer],lists:reverse([OutputHyperlayer|Acc2])}.
 
-			get_weights([{I_Coord,I,_I_Weights}|PrevHypercube],Coord,CPP_PIds,CEP_PIds,Acc,[W|Weights],O)->
-				plasticity_fanout(CPP_PIds,I_Coord,Coord,[I,O,W]),
-				U_W=fanin(CEP_PIds,[]),
-				get_weights(PrevHypercube,Coord,CPP_PIds,CEP_PIds,[functions:sat(U_W,3.1415,-3.1415)|Acc],Weights,O);
-			get_weights([],_Coord,CPP_PIds,CEP_PIds,Acc,[],_O)->
+			get_weights([{I_Coord,I,_I_Weights}|PrevHypercube],Coord,CPPProcess,CEPProcess,Acc,[W|Weights],O)->
+				plasticity_fanout(CPPProcess,I_Coord,Coord,[I,O,W]),
+				U_W=fanin(CEPProcess,[]),
+				get_weights(PrevHypercube,Coord,CPPProcess,CEPProcess,[functions:sat(U_W,3.1415,-3.1415)|Acc],Weights,O);
+			get_weights([],_Coord,CPPProcess,CEPProcess,Acc,[],_O)->
 				lists:reverse(Acc).
 
-				plasticity_fanout([CPP_PId|CPP_PIds],I_Coord,Coord,IOW)->
-					CPP_PId ! {self(),I_Coord,Coord,IOW},
-					plasticity_fanout(CPP_PIds,I_Coord,Coord,IOW);
+				plasticity_fanout([CPPProcess|CPPProcess],I_Coord,Coord,IOW)->
+					CPPProcess ! {self(),I_Coord,Coord,IOW},
+					plasticity_fanout(CPPProcess,I_Coord,Coord,IOW);
 				plasticity_fanout([],_I_Coord,_Coord,_IOW)->
 					done.
 					
-				fanin([CEP_PId|CEP_PIds],W)->
+				fanin([CEPProcess|CEPProcess],W)->
 					receive
-						{CEP_PId,Command,Signal}->
+						{CEPProcess,Command,Signal}->
 							U_W=substrate:Command(Signal,W)
 					end,
-					fanin(CEP_PIds,U_W);
+					fanin(CEPProcess,U_W);
 				fanin([],W)->
 					W.
 					
@@ -513,7 +513,7 @@ calculate_HoldOutput(Densities,Substrate,Input,LinkForm,Plasticity)->
 	{Output,U_PHyperlayers}=calculate_substrate_output(Populated_IHyperlayer,Populated_PHyperlayers,LinkForm,Plasticity),
 	{Output,[IHyperlayer|U_PHyperlayers]}.
 
-calculate_ResetOutput(Densities,Substrate,Input,CPP_PIds,CEP_PIds,Plasticity,LinkForm)->
+calculate_ResetOutput(Densities,Substrate,Input,CPPProcess,CEPProcess,Plasticity,LinkForm)->
 	[IHyperlayer|PHyperlayers] = Substrate,
 	%io:format("IHyperlayer:~p~n PHyperlayers:~p~n",[IHyperlayer,PHyperlayers]),
 	Populated_IHyperlayer = populate_InputHyperlayer(IHyperlayer,lists:flatten(Input),[]),
@@ -523,7 +523,7 @@ calculate_ResetOutput(Densities,Substrate,Input,CPP_PIds,CEP_PIds,Plasticity,Lin
 			{Output,U_PHyperlayers}=calculate_substrate_output(Populated_IHyperlayer,PHyperlayers,LinkForm,Plasticity),
 			{Output,[IHyperlayer|U_PHyperlayers]};
 		_ ->%none, modular_none
-			Populated_PHyperlayers = populate_PHyperlayers(Substrate,CPP_PIds,CEP_PIds,LinkForm),
+			Populated_PHyperlayers = populate_PHyperlayers(Substrate,CPPProcess,CEPProcess,LinkForm),
 			%Populated_Substrate = lists:append([Populated_IHyperlayer],Populated_PHyperlayers),
 			{Output,U_PHyperlayers}=calculate_substrate_output(Populated_IHyperlayer,Populated_PHyperlayers,LinkForm,Plasticity),
 			{Output,[IHyperlayer|U_PHyperlayers]}
@@ -534,60 +534,60 @@ calculate_ResetOutput(Densities,Substrate,Input,CPP_PIds,CEP_PIds,Plasticity,Lin
 	populate_InputHyperlayer([],[],Acc)->
 		lists:reverse(Acc).
 		
-	populate_PHyperlayers(Substrate,CPP_PIds,CEP_PIds,LinkForm)->
+	populate_PHyperlayers(Substrate,CPPProcess,CEPProcess,LinkForm)->
 		case LinkForm of
 			l2l_feedforward ->
 				[PrevHypercube,CurHypercube|RemSubstrate] = Substrate,
-				populate_PHyperlayers_l2l(PrevHypercube,CurHypercube,RemSubstrate,CPP_PIds,CEP_PIds,[],[]);
+				populate_PHyperlayers_l2l(PrevHypercube,CurHypercube,RemSubstrate,CPPProcess,CEPProcess,[],[]);
 			fully_interconnected ->
 				[_InputHypercube,CurHypercube|RemSubstrate] = Substrate,
-				populate_PHyperlayers_fi(lists:flatten(Substrate),CurHypercube,RemSubstrate,CPP_PIds,CEP_PIds,[],[]);
+				populate_PHyperlayers_fi(lists:flatten(Substrate),CurHypercube,RemSubstrate,CPPProcess,CEPProcess,[],[]);
 			jordan_recurrent ->
 				[IHypercube,CurHypercube|RemSubstrate] = Substrate,
 				[OSubstrate|_]=lists:reverse(Substrate),
-				populate_PHyperlayers_l2l(lists:flatten([IHypercube,OSubstrate]),CurHypercube,RemSubstrate,CPP_PIds,CEP_PIds,[],[]);
+				populate_PHyperlayers_l2l(lists:flatten([IHypercube,OSubstrate]),CurHypercube,RemSubstrate,CPPProcess,CEPProcess,[],[]);
 			neuronself_recurrent ->
 				[PrevHypercube,CurHypercube|RemSubstrate] = Substrate,
-				populate_PHyperlayers_nsr(PrevHypercube,CurHypercube,RemSubstrate,CPP_PIds,CEP_PIds,[],[])
+				populate_PHyperlayers_nsr(PrevHypercube,CurHypercube,RemSubstrate,CPPProcess,CEPProcess,[],[])
 		end.
 	
-		populate_PHyperlayers_l2l(PrevHyperlayer,[{Coord,PrevO,PrevWeights}|CurHyperlayer],Substrate,CPP_PIds,CEP_PIds,Acc1,Acc2)->
-			NewWeights = get_weights(PrevHyperlayer,Coord,CPP_PIds,CEP_PIds,[]),
-			populate_PHyperlayers_l2l(PrevHyperlayer,CurHyperlayer,Substrate,CPP_PIds,CEP_PIds,[{Coord,PrevO,NewWeights}|Acc1],Acc2);
-		populate_PHyperlayers_l2l(_PrevHyperlayer,[],[CurHyperlayer|Substrate],CPP_PIds,CEP_PIds,Acc1,Acc2)->
+		populate_PHyperlayers_l2l(PrevHyperlayer,[{Coord,PrevO,PrevWeights}|CurHyperlayer],Substrate,CPPProcess,CEPProcess,Acc1,Acc2)->
+			NewWeights = get_weights(PrevHyperlayer,Coord,CPPProcess,CEPProcess,[]),
+			populate_PHyperlayers_l2l(PrevHyperlayer,CurHyperlayer,Substrate,CPPProcess,CEPProcess,[{Coord,PrevO,NewWeights}|Acc1],Acc2);
+		populate_PHyperlayers_l2l(_PrevHyperlayer,[],[CurHyperlayer|Substrate],CPPProcess,CEPProcess,Acc1,Acc2)->
 			PrevHyperlayer = lists:reverse(Acc1),
-			populate_PHyperlayers_l2l(PrevHyperlayer,CurHyperlayer,Substrate,CPP_PIds,CEP_PIds,[],[PrevHyperlayer|Acc2]);
-		populate_PHyperlayers_l2l(_PrevHyperlayer,[],[],CPP_PIds,CEP_PIds,Acc1,Acc2)->
+			populate_PHyperlayers_l2l(PrevHyperlayer,CurHyperlayer,Substrate,CPPProcess,CEPProcess,[],[PrevHyperlayer|Acc2]);
+		populate_PHyperlayers_l2l(_PrevHyperlayer,[],[],CPPProcess,CEPProcess,Acc1,Acc2)->
 			lists:reverse([lists:reverse(Acc1)|Acc2]).
 
-		populate_PHyperlayers_fi(FlatSubstrate,[{Coord,PrevO,_PrevWeights}|CurHyperlayer],Substrate,CPP_PIds,CEP_PIds,Acc1,Acc2)->
-			NewWeights = get_weights(FlatSubstrate,Coord,CPP_PIds,CEP_PIds,[]),
-			populate_PHyperlayers_fi(FlatSubstrate,CurHyperlayer,Substrate,CPP_PIds,CEP_PIds,[{Coord,PrevO,NewWeights}|Acc1],Acc2);
-		populate_PHyperlayers_fi(FlatSubstrate,[],[CurHyperlayer|Substrate],CPP_PIds,CEP_PIds,Acc1,Acc2)->
-			populate_PHyperlayers_fi(FlatSubstrate,CurHyperlayer,Substrate,CPP_PIds,CEP_PIds,[],[lists:reverse(Acc1)|Acc2]);
-		populate_PHyperlayers_fi(_FlatSubstrate,[],[],CPP_PIds,CEP_PIds,Acc1,Acc2)->
+		populate_PHyperlayers_fi(FlatSubstrate,[{Coord,PrevO,_PrevWeights}|CurHyperlayer],Substrate,CPPProcess,CEPProcess,Acc1,Acc2)->
+			NewWeights = get_weights(FlatSubstrate,Coord,CPPProcess,CEPProcess,[]),
+			populate_PHyperlayers_fi(FlatSubstrate,CurHyperlayer,Substrate,CPPProcess,CEPProcess,[{Coord,PrevO,NewWeights}|Acc1],Acc2);
+		populate_PHyperlayers_fi(FlatSubstrate,[],[CurHyperlayer|Substrate],CPPProcess,CEPProcess,Acc1,Acc2)->
+			populate_PHyperlayers_fi(FlatSubstrate,CurHyperlayer,Substrate,CPPProcess,CEPProcess,[],[lists:reverse(Acc1)|Acc2]);
+		populate_PHyperlayers_fi(_FlatSubstrate,[],[],CPPProcess,CEPProcess,Acc1,Acc2)->
 			lists:reverse([lists:reverse(Acc1)|Acc2]).
 
-		populate_PHyperlayers_nsr(PrevHyperlayer,[{Coord,PrevO,_PrevWeights}|CurHyperlayer],Substrate,CPP_PIds,CEP_PIds,Acc1,Acc2)->
-			NewWeights = get_weights([{Coord,PrevO,_PrevWeights}|PrevHyperlayer],Coord,CPP_PIds,CEP_PIds,[]),
-			populate_PHyperlayers_nsr(PrevHyperlayer,CurHyperlayer,Substrate,CPP_PIds,CEP_PIds,[{Coord,PrevO,NewWeights}|Acc1],Acc2);
-		populate_PHyperlayers_nsr(_PrevHyperlayer,[],[CurHyperlayer|Substrate],CPP_PIds,CEP_PIds,Acc1,Acc2)->
+		populate_PHyperlayers_nsr(PrevHyperlayer,[{Coord,PrevO,_PrevWeights}|CurHyperlayer],Substrate,CPPProcess,CEPProcess,Acc1,Acc2)->
+			NewWeights = get_weights([{Coord,PrevO,_PrevWeights}|PrevHyperlayer],Coord,CPPProcess,CEPProcess,[]),
+			populate_PHyperlayers_nsr(PrevHyperlayer,CurHyperlayer,Substrate,CPPProcess,CEPProcess,[{Coord,PrevO,NewWeights}|Acc1],Acc2);
+		populate_PHyperlayers_nsr(_PrevHyperlayer,[],[CurHyperlayer|Substrate],CPPProcess,CEPProcess,Acc1,Acc2)->
 			PrevHyperlayer = lists:reverse(Acc1),
-			populate_PHyperlayers_nsr(PrevHyperlayer,CurHyperlayer,Substrate,CPP_PIds,CEP_PIds,[],[PrevHyperlayer|Acc2]);
-		populate_PHyperlayers_nsr(_PrevHyperlayer,[],[],CPP_PIds,CEP_PIds,Acc1,Acc2)->
+			populate_PHyperlayers_nsr(PrevHyperlayer,CurHyperlayer,Substrate,CPPProcess,CEPProcess,[],[PrevHyperlayer|Acc2]);
+		populate_PHyperlayers_nsr(_PrevHyperlayer,[],[],CPPProcess,CEPProcess,Acc1,Acc2)->
 			lists:reverse([lists:reverse(Acc1)|Acc2]).
 						
-			get_weights([{I_Coord,I,_I_Weights}|PrevHypercube],Coord,CPP_PIds,CEP_PIds,Acc)->
-				static_fanout(CPP_PIds,I_Coord,Coord),
-				U_W=fanin(CEP_PIds,[]),
-				get_weights(PrevHypercube,Coord,CPP_PIds,CEP_PIds,[functions:sat(U_W,3.1415,-3.1415)|Acc]);
-			get_weights([],_Coord,_CPP_PIds,_CEP_PIds,Acc)->
+			get_weights([{I_Coord,I,_I_Weights}|PrevHypercube],Coord,CPPProcess,CEPProcess,Acc)->
+				static_fanout(CPPProcess,I_Coord,Coord),
+				U_W=fanin(CEPProcess,[]),
+				get_weights(PrevHypercube,Coord,CPPProcess,CEPProcess,[functions:sat(U_W,3.1415,-3.1415)|Acc]);
+			get_weights([],_Coord,_CPPProcess,_CEPProcess,Acc)->
 				lists:reverse(Acc).
 
-				static_fanout([CPP_PId|CPP_PIds],I_Coord,Coord)->
-					%io:format("CPP_PId:~p~n",[CPP_PId]),
-					CPP_PId ! {self(),I_Coord,Coord},
-					static_fanout(CPP_PIds,I_Coord,Coord);
+				static_fanout([CPPProcess|CPPProcess],I_Coord,Coord)->
+					%io:format("CPPProcess:~p~n",[CPPProcess]),
+					CPPProcess ! {self(),I_Coord,Coord},
+					static_fanout(CPPProcess,I_Coord,Coord);
 				static_fanout([],_I_Coord,_Coord)->
 					done.
 						

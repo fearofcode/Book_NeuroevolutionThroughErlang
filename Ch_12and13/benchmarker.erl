@@ -62,13 +62,13 @@ prep(E)->
 	PMP = E#experiment.pm_parameters,
 	U_PMP = PMP#pmp{benchmarker_pid=self()},
 	Constraints = E#experiment.init_constraints,
-	Population_Id = PMP#pmp.population_id,
+	PopulationID = PMP#pmp.population_id,
 	population_monitor:prep_PopState(U_PMP,Constraints),
-	loop(E#experiment{pm_parameters=U_PMP},Population_Id).
+	loop(E#experiment{pm_parameters=U_PMP},PopulationID).
 	
-loop(E,P_Id)->
+loop(E,PID)->
 	receive
-		{P_Id,completed,Trace}->
+		{PID,completed,Trace}->
 			U_TraceAcc = [Trace|E#experiment.trace_acc],
 			U_RunIndex = E#experiment.run_index+1,
 			case U_RunIndex >= E#experiment.tot_runs of
@@ -90,14 +90,14 @@ loop(E,P_Id)->
 					PMP = U_E#experiment.pm_parameters,
 					Constraints = U_E#experiment.init_constraints,
 					population_monitor:prep_PopState(PMP,Constraints),
-					loop(U_E,P_Id)
+					loop(U_E,PID)
 			end;
 		terminate ->
 			ok
 	end.
 		
-report(Experiment_Id,FileName)->
-	E = genotype:dirty_read({experiment,Experiment_Id}),
+report(ExperimentID,FileName)->
+	E = genotype:dirty_read({experiment,ExperimentID}),
 	Traces = E#experiment.trace_acc,
 	{ok, File} = file:open(?DIR++FileName++"_Trace_Acc", write),
 	lists:foreach(fun(X) -> io:format(File, "~p.~n",[X]) end, Traces),

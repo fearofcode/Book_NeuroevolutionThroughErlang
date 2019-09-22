@@ -16,11 +16,11 @@
 
 go(Morphology,HiddenLayerDensities)->
 	go(Morphology,HiddenLayerDensities,?TOT_RUNS).
-go(Morphology,HiddenLayerDensities,TotRuns)->
-	go(Morphology,HiddenLayerDensities,?MAX_ATTEMPTS,?EVAL_LIMIT,?FITNESS_TARGET,TotRuns).
-go(Morphology,HiddenLayerDensities,MaxAttempts,EvalLimit,FitnessTarget,TotRuns)->
-	PId = spawn(benchmarker,loop,[Morphology,HiddenLayerDensities,MaxAttempts,EvalLimit,FitnessTarget,TotRuns,[],[],[],[]]),
-	register(benchmarker,PId).
+go(Morphology,HiddenLayerDensities,TotalRuns)->
+	go(Morphology,HiddenLayerDensities,?MAX_ATTEMPTS,?EVAL_LIMIT,?FITNESS_TARGET,TotalRuns).
+go(Morphology,HiddenLayerDensities,MaxAttempts,EvalLimit,FitnessTarget,TotalRuns)->
+	ProcessID = spawn(benchmarker,loop,[Morphology,HiddenLayerDensities,MaxAttempts,EvalLimit,FitnessTarget,TotalRuns,[],[],[],[]]),
+	register(benchmarker,ProcessID).
 %
 	
 loop(Morphology,_HiddenLayerDensities,_MA,_EL,_FT,0,FitnessAcc,EvalsAcc,CyclesAcc,TimeAcc)->
@@ -30,9 +30,9 @@ loop(Morphology,_HiddenLayerDensities,_MA,_EL,_FT,0,FitnessAcc,EvalsAcc,CyclesAc
 	io:format("Cycles::~n Max:~p~n Min:~p~n Avg:~p~n Std:~p~n",[lists:max(CyclesAcc),lists:min(CyclesAcc),avg(CyclesAcc),std(CyclesAcc)]),
 	io:format("Time::~n Max:~p~n Min:~p~n Avg:~p~n Std:~p~n",[lists:max(TimeAcc),lists:min(TimeAcc),avg(TimeAcc),std(TimeAcc)]);
 loop(Morphology,HiddenLayerDensities,MA,EL,FT,BenchmarkIndex,FitnessAcc,EvalsAcc,CyclesAcc,TimeAcc)->
-	Trainer_PId = trainer:go(Morphology,HiddenLayerDensities,MA,EL,FT),
+	TrainerProcess = trainer:go(Morphology,HiddenLayerDensities,MA,EL,FT),
 	receive
-		{Trainer_PId,Fitness,Evals,Cycles,Time}->
+		{TrainerProcess,Fitness,Evals,Cycles,Time}->
 			loop(Morphology,HiddenLayerDensities,MA,EL,FT,BenchmarkIndex-1,[Fitness|FitnessAcc],[Evals|EvalsAcc],[Cycles|CyclesAcc],[Time|TimeAcc]);
 		terminate ->
 			loop(Morphology,HiddenLayerDensities,MA,EL,FT,0,FitnessAcc,EvalsAcc,CyclesAcc,TimeAcc)

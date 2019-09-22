@@ -35,22 +35,22 @@ loop()->
 	put(canvas,Canvas),
 	gs:config(Window,{map,true}),
 	ScapeType = ?INIT_SCAPE_TYPE,
-	Scape_PId = gen_server:call(polis,{get_scape,ScapeType}),
-%	io:format("Inside Visor:: Scape_PId:~p~n",[Scape_PId]),
-	gen_server:cast(Scape_PId,{self(),subscribe,Canvas}),
+	ScapeProcess = gen_server:call(polis,{get_scape,ScapeType}),
+%	io:format("Inside Visor:: ScapeProcess:~p~n",[ScapeProcess]),
+	gen_server:cast(ScapeProcess,{self(),subscribe,Canvas}),
 	InitState = #state{
 		window = Window,
 		canvas = Canvas,
 		update_rate = 10,
 		filter = {1.0,0,0},
-		scape = Scape_PId,
+		scape = ScapeProcess,
 		scape_type = ScapeType
 	},
-	io:format("Visor started. Scape_PId:~p ScapeType:~p~n",[Scape_PId,ScapeType]),
+	io:format("Visor started. ScapeProcess:~p ScapeType:~p~n",[ScapeProcess,ScapeType]),
 	loop(InitState).
 	
 loop(S)->
-	Scape_PId = S#state.scape,
+	ScapeProcess = S#state.scape,
 	receive
 		{From,new_Filter,NewFilter}->
 			visor:loop(S#state{filter=NewFilter});
@@ -58,14 +58,14 @@ loop(S)->
 			visor:loop(S#state{update_rate=NewUpdateRate});
 		{From,change_scape,ScapeType}->
 			gen_server:cast(S#state.scape,{self(),unsubscribe}),
-			New_ScapePId = gen_server:call(polis,{get_scape,ScapeType}),
-			visor:loop(S#state{scape=New_ScapePId});
-		{Scape_PId,draw_object,Object}->
+			New_ScapeProcessID = gen_server:call(polis,{get_scape,ScapeType}),
+			visor:loop(S#state{scape=New_ScapeProcessID});
+		{ScapeProcess,draw_object,Object}->
 			%io:format("~p~n",[Object]),
 			Id=draw_object(S#state.canvas,Object),
-			Scape_PId ! {self(),Id},
+			ScapeProcess ! {self(),Id},
 			visor:loop(S);
-		{Scape_PId,destroy_object,Id}->
+		{ScapeProcess,destroy_object,Id}->
 			gs:destroy(Id),
 			visor:loop(S);
 		ctlegend_on ->
@@ -103,9 +103,9 @@ draw_avatar(Canvas,Avatar)->
 		{ObjName,_IdPlaceHolder,Color,Pivot,Coords,Parameter} = Object,		
 		Id = case ObjName of
 			circle ->
-				[{Cx,Cy}] = Coords,
+				[{Cortex,Cy}] = Coords,
 				R = Parameter,
-				Draw_Coords = [{Cx-R,Cy-R},{Cx+R,Cy+R}],
+				Draw_Coords = [{Cortex-R,Cy-R},{Cortex+R,Cy+R}],
 				gs:create(oval,Canvas,[{coords,Draw_Coords},{fill,Color},{fg,Color}]);
 			arrow ->
 				gs:create(line,Canvas,[{coords,Coords},{arrow,last},{fg,Color}]);
@@ -123,9 +123,9 @@ draw_avatar(Canvas,Avatar)->
 		{ObjName,undefined,Color,Pivot,Coords,Parameter} = Object,
 		Id = case ObjName of
 			circle ->
-				[{Cx,Cy}] = Coords,
+				[{Cortex,Cy}] = Coords,
 				R = Parameter,
-				Draw_Coords = [{Cx-R,Cy-R},{Cx+R,Cy+R}],
+				Draw_Coords = [{Cortex-R,Cy-R},{Cortex+R,Cy+R}],
 				gs:create(oval,Canvas,[{coords,Draw_Coords},{fill,Color},{fg,Color}]);
 			arrow ->
 				gs:create(line,Canvas,[{coords,Coords},{arrow,last},{fg,Color}]);
@@ -137,8 +137,8 @@ draw_avatar(Canvas,Avatar)->
 		CF = Avatar#avatar.actuators,
 		CT = Avatar#avatar.sensors,
 		Loc = Avatar#avatar.loc,
-		CFStatIds = [gs:create(text,Canvas,[{coords,[Loc]},{text,atom_to_list(Actuator)}]) || {CF_PId,CFVL,{actuator,Actuator,ActuatorId,Parameters}}<-CF],
-		CTStatIds = [gs:create(text,Canvas,[{coords,[Loc]},{text,atom_to_list(Sensor)}]) || {CT_PId,CTVL,{sensor,Sensor,SensorId,Parameters}}<-CT],
+		CFStatIds = [gs:create(text,Canvas,[{coords,[Loc]},{text,atom_to_list(Actuator)}]) || {CFProcess,CFVL,{actuator,Actuator,ActuatorId,Parameters}}<-CF],
+		CTStatIds = [gs:create(text,Canvas,[{coords,[Loc]},{text,atom_to_list(Sensor)}]) || {CTProcess,CTVL,{sensor,Sensor,SensorId,Parameters}}<-CT],
 		[gs:destroy(Id) || Id<- CFStatIds],
 		[gs:destroy(Id) || Id<- CTStatIds];
 	draw_stats(_,_)->
@@ -155,9 +155,9 @@ redraw_avatars(_Filter,[])->
 		{ObjName,Id,Color,Pivot,Coords,Parameter} = Object,
 		Draw_Coords =case ObjName of
 			circle ->
-				[{Cx,Cy}] = Coords,
+				[{Cortex,Cy}] = Coords,
 				R = Parameter,
-				[{Cx-R,Cy-R},{Cx+R,Cy+R}];
+				[{Cortex-R,Cy-R},{Cortex+R,Cy+R}];
 			_ ->
 				Coords
 		end,
@@ -246,11 +246,11 @@ test()->
 						Avatars
 					end;
 				random ->
-					case random:uniform(2) of
+					case rand:uniform(2) of
 						1 ->%io:format("move~n"),
-							[scape:move(Avatar,random:uniform()) || Avatar <- Avatars];
+							[scape:move(Avatar,rand:uniform()) || Avatar <- Avatars];
 						2 ->%io:format("rotate~n"),
-							[scape:rotate(Avatar,(random:uniform()-0.5)/2*math:pi()) || Avatar <- Avatars]
+							[scape:rotate(Avatar,(rand:uniform()-0.5)/2*math:pi()) || Avatar <- Avatars]
 					end
 			end,
 			Zoom = 1.0,

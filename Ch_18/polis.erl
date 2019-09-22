@@ -31,8 +31,8 @@ start() ->
 	case whereis(polis) of 
 		undefined -> 
 			gen_server:start(?MODULE, {?MODS,?PUBLIC_SCAPES}, []); 
-		Polis_PId -> 
-			io:format("Polis:~p is already running on this node.~n",[Polis_PId]) 
+		PolisProcess -> 
+			io:format("Polis:~p is already running on this node.~n",[PolisProcess]) 
 	end. 
 
 start(Start_Parameters) -> 
@@ -45,8 +45,8 @@ stop()->
 	case whereis(polis) of 
 		undefined -> 
 			io:format("Polis cannot be stopped, it is not online~n"); 
-		Polis_PId -> 
-			gen_server:cast(Polis_PId,{stop,normal})
+		PolisProcess -> 
+			gen_server:cast(PolisProcess,{stop,normal})
 	end. 
 %The stop/0 function first checks whether a polis process is online. If there is an online polis process running on the node, then the stop function sends a signal to it requesting it to stop.
 	 
@@ -65,15 +65,15 @@ init({Mods,PublicScapes}) ->
 	{ok, InitState}. 
 %The init/1 function first seeds random with a new seed, in the case a random number generator will be needed. The polis process is then registered, the mnesia database is started, and the supporting modules, if any, are then started through the start_supmods/1 function. Then all the specified public scapes, if any, are activated. Having called our neuroevolutionary platform polis, we give this polis a name “MATHEMA”, which is a greek word for knowledge, and learning. Finally we create the initial state, which contains the Pids of the currently active public scapes, and the names of the activated mods. The function then drops into the main gen_server loop.
 
-handle_call({get_scape,Type},{Cx_PId,_Ref},S)->
+handle_call({get_scape,Type},{CortexProcess,_Ref},S)->
 	Active_PublicScapes = S#state.active_scapes, 
-	Scape_PId = case lists:keyfind(Type,3,Active_PublicScapes) of 
+	ScapeProcess = case lists:keyfind(Type,3,Active_PublicScapes) of 
 		false -> 
 			undefined; 
 		PS -> 
 			PS#scape_summary.address
 	end, 
-	{reply,Scape_PId,S};
+	{reply,ScapeProcess,S};
 handle_call({stop,normal},_From, State)-> 
 	{stop, normal, State}; 
 handle_call({stop,shutdown},_From,State)-> 
@@ -131,7 +131,7 @@ start_supmods([ModName|ActiveMods])->
 	start_supmods(ActiveMods); 
 start_supmods([])-> 
 	done. 
-%The start_supmods/1 function expects a list of module names of the mods that are to be started with the startup of the neuroeovlutionary platform. Each module must have a start/0 function that starts up the supporting mod process.
+%The start_supmods/1 function expects a list of module names of the mods that are to be started with the startup of the neuroeovector_lengthutionary platform. Each module must have a start/0 function that starts up the supporting mod process.
 
 stop_supmods([ModName|ActiveMods])-> 
 	ModName:stop(), 
@@ -145,15 +145,15 @@ start_scapes([S|Scapes],Acc)->
 	Parameters = S#scape_summary.parameters,
 	Physics = S#scape_summary.physics,
 	Metabolics = S#scape_summary.metabolics,
-	{ok,PId} = Type:start_link({self(),Type,Physics,Metabolics}), 
-	start_scapes(Scapes,[S#scape_summary{address=PId}|Acc]); 
+	{ok,ProcessID} = Type:start_link({self(),Type,Physics,Metabolics}), 
+	start_scapes(Scapes,[S#scape_summary{address=ProcessID}|Acc]); 
 start_scapes([],Acc)-> 
 	lists:reverse(Acc). 
 %The start_scapes/2 function accepts a list of scape_summary records, which specify the names of the public scapes and any parameters that with which those scapes should be started. What specifies what scape that is going to be created by the scape module is the Type that is dropped into the function. Ofcourse the scape module should already be able to create the Type of scape that is dropped into the start_link function. Once the scape is started, we record the Pid in that scape_summary's record. When all the public scapes have been started, the function outputs a list of updated scape_summary records.
 
 stop_scapes([S|Scapes])-> 
-	PId = S#scape_summary.address,
-	gen_server:cast(PId,{self(),stop,normal}),
+	ProcessID = S#scape_summary.address,
+	gen_server:cast(ProcessID,{self(),stop,normal}),
 	stop_scapes(Scapes); 
 stop_scapes([])-> 
 	ok.

@@ -14,6 +14,6 @@ none(Agent_Summaries)->
 	lists:reverse(lists:sort(Agent_Summaries)).
 
 size_proportional(Agent_Summaries)->
-	SDX=lists:reverse(lists:sort([{Fitness/math:pow(TotN,?EFF),{Fitness,TotN,Agent_Id}}||{Fitness,TotN,Agent_Id}<-Agent_Summaries])),
+	SDX=lists:reverse(lists:sort([{Fitness/math:pow(TotalN,?EFF),{Fitness,TotalN,Agent_Id}}||{Fitness,TotalN,Agent_Id}<-Agent_Summaries])),
 	ProperlySorted_AgentSummaries = [Val || {_,Val}<-SDX],
 	ProperlySorted_AgentSummaries.

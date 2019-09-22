@@ -10,48 +10,48 @@
 -include("records.hrl").
 -record(state,{id,exoself_pid,spids,npids,apids,cycle_acc=0,fitness_acc=0,endflag=0,status}).
 
-gen(ExoSelf_PId,Node)->
-	spawn(Node,?MODULE,prep,[ExoSelf_PId]).
+gen(ExoSelfProcess,Node)->
+	spawn(Node,?MODULE,prep,[ExoSelfProcess]).
 
-prep(ExoSelf_PId) ->
+prep(ExoSelfProcess) ->
 	{V1,V2,V3} = now(),
 	random:seed(V1,V2,V3),
 	receive 
-		{ExoSelf_PId,Id,SPIds,NPIds,APIds} ->
+		{ExoSelfProcess,Id,SensorProcess,NeuronProcess,ActuatorProcess} ->
 			put(start_time,now()),
-			[SPId ! {self(),sync} || SPId <- SPIds],
-			loop(Id,ExoSelf_PId,SPIds,{APIds,APIds},NPIds,1,0,0,active)
+			[SensorProcess ! {self(),sync} || SensorProcess <- SensorProcess],
+			loop(Id,ExoSelfProcess,SensorProcess,{ActuatorProcess,ActuatorProcess},NeuronProcess,1,0,0,active)
 	end.
-%The gen/2 function spawns the cortex element, which immediately starts to wait for its initial state message from the same process that spawned it, exoself. The initial state message contains the sensor, actuator, and neuron PId lists. Before dropping into the main loop, CycleAcc, FitnessAcc, and HFAcc (HaltFlag Acc), are all set to 0, and the status of the cortex is set to ac- tive, prompting it to begin the synchronization process and call the sensors to action.
+%The gen/2 function spawns the cortex element, which immediately starts to wait for its initial state message from the same process that spawned it, exoself. The initial state message contains the sensor, actuator, and neuron ProcessID lists. Before dropping into the main loop, CycleAcc, FitnessAcc, and HFAcc (HaltFlag Acc), are all set to 0, and the status of the cortex is set to ac- tive, prompting it to begin the synchronization process and call the sensors to action.
 
-loop(Id,ExoSelf_PId,SPIds,{[APId|APIds],MAPIds},NPIds,CycleAcc,FitnessAcc,EFAcc,active) ->
+loop(Id,ExoSelfProcess,SensorProcess,{[ActuatorProcess|ActuatorProcess],MActuatorProcess},NeuronProcess,CycleAcc,FitnessAcc,EFAcc,active) ->
 	receive 
-		{APId,sync,Fitness,EndFlag} ->
-			loop(Id,ExoSelf_PId,SPIds,{APIds,MAPIds},NPIds,CycleAcc,FitnessAcc+Fitness,EFAcc+EndFlag,active);
+		{ActuatorProcess,sync,Fitness,EndFlag} ->
+			loop(Id,ExoSelfProcess,SensorProcess,{ActuatorProcess,MActuatorProcess},NeuronProcess,CycleAcc,FitnessAcc+Fitness,EFAcc+EndFlag,active);
 		terminate ->
 			io:format("Cortex:~p is terminating.~n",[Id]),
-			[PId ! {self(),terminate} || PId <- SPIds],
-			[PId ! {self(),terminate} || PId <- MAPIds],
-			[PId ! {self(),termiante} || PId <- NPIds]
+			[ProcessID ! {self(),terminate} || ProcessID <- SensorProcess],
+			[ProcessID ! {self(),terminate} || ProcessID <- MActuatorProcess],
+			[ProcessID ! {self(),termiante} || ProcessID <- NeuronProcess]
 	end;
-loop(Id,ExoSelf_PId,SPIds,{[],MAPIds},NPIds,CycleAcc,FitnessAcc,EFAcc,active)->
+loop(Id,ExoSelfProcess,SensorProcess,{[],MActuatorProcess},NeuronProcess,CycleAcc,FitnessAcc,EFAcc,active)->
 	case EFAcc > 0 of
 		true ->
 			TimeDif=timer:now_diff(now(),get(start_time)),
-			ExoSelf_PId ! {self(),evaluation_completed,FitnessAcc,CycleAcc,TimeDif},
-			loop(Id,ExoSelf_PId,SPIds,{MAPIds,MAPIds},NPIds,CycleAcc,FitnessAcc,EFAcc,inactive);
+			ExoSelfProcess ! {self(),evaluation_completed,FitnessAcc,CycleAcc,TimeDif},
+			loop(Id,ExoSelfProcess,SensorProcess,{MActuatorProcess,MActuatorProcess},NeuronProcess,CycleAcc,FitnessAcc,EFAcc,inactive);
 		false ->
-			[PId ! {self(),sync} || PId <- SPIds],
-			loop(Id,ExoSelf_PId,SPIds,{MAPIds,MAPIds},NPIds,CycleAcc+1,FitnessAcc,EFAcc,active)
+			[ProcessID ! {self(),sync} || ProcessID <- SensorProcess],
+			loop(Id,ExoSelfProcess,SensorProcess,{MActuatorProcess,MActuatorProcess},NeuronProcess,CycleAcc+1,FitnessAcc,EFAcc,active)
 	end;
-loop(Id,ExoSelf_PId,SPIds,{MAPIds,MAPIds},NPIds,_CycleAcc,_FitnessAcc,_EFAcc,inactive)->
+loop(Id,ExoSelfProcess,SensorProcess,{MActuatorProcess,MActuatorProcess},NeuronProcess,_CycleAcc,_FitnessAcc,_EFAcc,inactive)->
 	receive
-		{ExoSelf_PId,reactivate}->
+		{ExoSelfProcess,reactivate}->
 			put(start_time,now()),
-			[SPId ! {self(),sync} || SPId <- SPIds],
-			loop(Id,ExoSelf_PId,SPIds,{MAPIds,MAPIds},NPIds,1,0,0,active);
-		{ExoSelf_PId,terminate}->
+			[SensorProcess ! {self(),sync} || SensorProcess <- SensorProcess],
+			loop(Id,ExoSelfProcess,SensorProcess,{MActuatorProcess,MActuatorProcess},NeuronProcess,1,0,0,active);
+		{ExoSelfProcess,terminate}->
 			ok
 	end.
-%The cortex’s goal is to synchronize the NN system’s sensors and actuators. When the actuators have received all their control signals, they forward the sync messages, the Fitness, and the HaltFlag messages to the cortex. The cortex accumulates these Fitness and HaltFlag signals, and if any of the HaltFlag signals have been set to 1, HFAcc will be greater than 0, signifying that the cortex should halt. When EFAcc > 0, the cortex calculates the total amount of time it has ran (TimeDiff), and forwards to exoself the values: FitnessAcc, CycleAcc, and TimeDiff. Afterwards, the cortex enters the inactive mode and awaits further instructions from the exoself. If none of the HaltFlags were set to 0, then the value HFAcc == 0, and the cortex triggers off another Sense-Think-Act cycle. The reason the cortex process stores 2 copies of the actuator PIds: the APIds, and the MemoryAPIds (MAPIds), is so that once all the actuators have sent it the sync messages, it can restore the APIds list from the MAPIds.
+%The cortex’s goal is to synchronize the NN system’s sensors and actuators. When the actuators have received all their control signals, they forward the sync messages, the Fitness, and the HaltFlag messages to the cortex. The cortex accumulates these Fitness and HaltFlag signals, and if any of the HaltFlag signals have been set to 1, HFAcc will be greater than 0, signifying that the cortex should halt. When EFAcc > 0, the cortex calculates the total amount of time it has ran (TimeDiff), and forwards to exoself the values: FitnessAcc, CycleAcc, and TimeDiff. Afterwards, the cortex enters the inactive mode and awaits further instructions from the exoself. If none of the HaltFlags were set to 0, then the value HFAcc == 0, and the cortex triggers off another Sense-Think-Act cycle. The reason the cortex process stores 2 copies of the actuator ProcessIDs: the ActuatorProcess, and the MemoryActuatorProcess (MActuatorProcess), is so that once all the actuators have sent it the sync messages, it can restore the ActuatorProcess list from the MActuatorProcess.
 

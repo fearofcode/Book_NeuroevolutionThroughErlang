@@ -9,20 +9,20 @@
 -compile(export_all).
 -include("records.hrl").
 
-%ncount_exponential/2 calculates TotMutations by putting the size of the NN to some power Power.
-ncount_exponential(Power,Agent_Id)->
-	A = genotype:read({agent,Agent_Id}),
-	Cx = genotype:read({cortex,A#agent.cx_id}),
-	TotNeurons = length(Cx#cortex.neuron_ids),
-	TotMutations = random:uniform(round(math:pow(TotNeurons,Power))),
-	io:format("Tot neurons:~p Performing Tot mutations:~p on:~p~n",[TotNeurons,TotMutations,Agent_Id]),
-	TotMutations.
+%ncount_exponential/2 calculates TotalMutations by putting the size of the NN to some power Power.
+ncount_exponential(Power,AgentID)->
+	A = genotype:read({agent,AgentID}),
+	Cortex = genotype:read({cortex,A#agent.cortex_id}),
+	TotalNeurons = length(Cortex#cortex.neuron_ids),
+	TotalMutations = rand:uniform(round(math:pow(TotalNeurons,Power))),
+	io:format("Total neurons:~p Performing Total mutations:~p on:~p~n",[TotalNeurons,TotalMutations,AgentID]),
+	TotalMutations.
 
-%ncount_linear/2 calcualtes TotMutations by multiplying the size of the NN by the value Multiplier.
-ncount_linear(Multiplier,Agent_Id)->
-	A = genotype:read({agent,Agent_Id}),
-	Cx = genotype:read({cortex,A#agent.cx_id}),
-	TotNeurons = length(Cx#cortex.neuron_ids),
-	TotMutations = TotNeurons*Multiplier,
-	io:format("Tot neurons:~p Performing Tot mutations:~p on:~p~n",[TotNeurons,TotMutations,Agent_Id]),
-	TotMutations.
+%ncount_linear/2 calcualtes TotalMutations by multiplying the size of the NN by the value Multiplier.
+ncount_linear(Multiplier,AgentID)->
+	A = genotype:read({agent,AgentID}),
+	Cortex = genotype:read({cortex,A#agent.cortex_id}),
+	TotalNeurons = length(Cortex#cortex.neuron_ids),
+	TotalMutations = TotalNeurons*Multiplier,
+	io:format("Total neurons:~p Performing Total mutations:~p on:~p~n",[TotalNeurons,TotalMutations,AgentID]),
+	TotalMutations.

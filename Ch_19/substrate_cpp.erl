@@ -9,28 +9,28 @@
 -compile(export_all).
 -include("records.hrl").
 
-gen(ExoSelf_PId,Node)->
-	spawn(Node,?MODULE,prep,[ExoSelf_PId]).
+gen(ExoSelfProcess,Node)->
+	spawn(Node,?MODULE,prep,[ExoSelfProcess]).
 
-prep(ExoSelf_PId) ->
+prep(ExoSelfProcess) ->
 	receive 
-		{ExoSelf_PId,{Id,Cx_PId,Substrate_PId,CPPName,VL,Parameters,Fanout_PIds}} ->
-			loop(Id,ExoSelf_PId,Cx_PId,Substrate_PId,CPPName,VL,Parameters,Fanout_PIds)
+		{ExoSelfProcess,{Id,CortexProcess,SubstrateProcess,CPPName,VL,Parameters,FanoutProcess}} ->
+			loop(Id,ExoSelfProcess,CortexProcess,SubstrateProcess,CPPName,VL,Parameters,FanoutProcess)
 	end.
 %When gen/2 is executed, it spawns the substrate_cpp element and immediately begins to wait for its initial state message.
 
-loop(Id,ExoSelf_PId,Cx_PId,Substrate_PId,CPPName,VL,Parameters,Fanout_PIds)->
+loop(Id,ExoSelfProcess,CortexProcess,SubstrateProcess,CPPName,VL,Parameters,FanoutProcess)->
 	receive
-		{Substrate_PId,Presynaptic_Coords,Postsynaptic_Coords}->
+		{SubstrateProcess,Presynaptic_Coords,Postsynaptic_Coords}->
 			SensoryVector = functions:CPPName(Presynaptic_Coords,Postsynaptic_Coords),
-			[Pid ! {self(),forward,SensoryVector} || Pid <- Fanout_PIds],
-			loop(Id,ExoSelf_PId,Cx_PId,Substrate_PId,CPPName,VL,Parameters,Fanout_PIds);
-		{Substrate_PId,Presynaptic_Coords,Postsynaptic_Coords,IOW}->
+			[Pid ! {self(),forward,SensoryVector} || Pid <- FanoutProcess],
+			loop(Id,ExoSelfProcess,CortexProcess,SubstrateProcess,CPPName,VL,Parameters,FanoutProcess);
+		{SubstrateProcess,Presynaptic_Coords,Postsynaptic_Coords,IOW}->
 			SensoryVector = functions:CPPName(Presynaptic_Coords,Postsynaptic_Coords,IOW),
 			%io:format("SensoryVector:~p~n",[SensoryVector]),
-			[Pid ! {self(),forward,SensoryVector} || Pid <- Fanout_PIds],
-			loop(Id,ExoSelf_PId,Cx_PId,Substrate_PId,CPPName,VL,Parameters,Fanout_PIds);
-		{ExoSelf_PId,terminate} ->
+			[Pid ! {self(),forward,SensoryVector} || Pid <- FanoutProcess],
+			loop(Id,ExoSelfProcess,CortexProcess,SubstrateProcess,CPPName,VL,Parameters,FanoutProcess);
+		{ExoSelfProcess,terminate} ->
 			%io:format("substrate_cpp:~p is terminating.~n",[Id]),
 			ok
 	end.

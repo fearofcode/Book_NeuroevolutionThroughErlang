@@ -9,23 +9,23 @@
 -compile(export_all).
 -include("records.hrl").
 
-gen(ExoSelf_PId,Node)->
-	spawn(Node,?MODULE,prep,[ExoSelf_PId]).
+gen(ExoSelfProcess,Node)->
+	spawn(Node,?MODULE,prep,[ExoSelfProcess]).
 
-prep(ExoSelf_PId) ->
+prep(ExoSelfProcess) ->
 	receive 
-		{ExoSelf_PId,{Id,Cx_PId,Scape,SensorName,VL,Parameters,Fanout_PIds}} ->
-			loop(Id,ExoSelf_PId,Cx_PId,Scape,SensorName,VL,Parameters,Fanout_PIds)
+		{ExoSelfProcess,{Id,CortexProcess,Scape,SensorName,VL,Parameters,FanoutProcess}} ->
+			loop(Id,ExoSelfProcess,CortexProcess,Scape,SensorName,VL,Parameters,FanoutProcess)
 	end.
 %When gen/2 is executed it spawns the sensor element and immediately begins to wait for its initial state message.
 
-loop(Id,ExoSelf_PId,Cx_PId,Scape,SensorName,VL,Parameters,Fanout_PIds)->
+loop(Id,ExoSelfProcess,CortexProcess,Scape,SensorName,VL,Parameters,FanoutProcess)->
 	receive
-		{Cx_PId,sync}->
-			SensoryVector = sensor:SensorName(ExoSelf_PId,VL,Parameters,Scape),
-			[Pid ! {self(),forward,SensoryVector} || Pid <- Fanout_PIds],
-			loop(Id,ExoSelf_PId,Cx_PId,Scape,SensorName,VL,Parameters,Fanout_PIds);
-		{ExoSelf_PId,terminate} ->
+		{CortexProcess,sync}->
+			SensoryVector = sensor:SensorName(ExoSelfProcess,VL,Parameters,Scape),
+			[Pid ! {self(),forward,SensoryVector} || Pid <- FanoutProcess],
+			loop(Id,ExoSelfProcess,CortexProcess,Scape,SensorName,VL,Parameters,FanoutProcess);
+		{ExoSelfProcess,terminate} ->
 			%io:format("Sensor:~p is terminating.~n",[Id]),
 			ok
 	end.
@@ -36,7 +36,7 @@ rng(Exoself,VL,_Scape)->
 rng1(0,Acc)->
 	Acc;
 rng1(VL,Acc)-> 
-	rng1(VL-1,[random:uniform()|Acc]).
+	rng1(VL-1,[rand:uniform()|Acc]).
 %rng/2 is a simple random number generator that produces a vector of random values, each between 0 and 1. The length of the vector is defined by the VL, which itself is specified within the sensor record.
 
 xor_GetInput(Exoself,VL,_Parameters,Scape)->
@@ -80,28 +80,28 @@ dtm_GetInput(Exoself,VL,Parameters,Scape)->
 			end
 	end.
 	
-distance_scanner(Exoself_PId,VL,[Spread,Density,RadialOffset],Scape)->
-	case gen_server:call(Scape,{get_all,avatars,Exoself_PId}) of
+distance_scanner(ExoselfProcess,VL,[Spread,Density,RadialOffset],Scape)->
+	case gen_server:call(Scape,{get_all,avatars,ExoselfProcess}) of
 		destroyed->
 			lists:duplicate(VL,-1);
 		Avatars ->
-			Self = lists:keyfind(Exoself_PId,2,Avatars),
+			Self = lists:keyfind(ExoselfProcess,2,Avatars),
 			Loc = Self#avatar.loc,
 			Direction = Self#avatar.direction,
-			Result=distance_scanner(silent,{1,0,0},Density,Spread,Loc,Direction,lists:keydelete(Exoself_PId, 2, Avatars)),
+			Result=distance_scanner(silent,{1,0,0},Density,Spread,Loc,Direction,lists:keydelete(ExoselfProcess, 2, Avatars)),
 			Result
 	end.
 
-color_scanner(Exoself_PId,VL,[Spread,Density,RadialOffset],Scape)->
-	case gen_server:call(Scape,{get_all,avatars,Exoself_PId}) of
+color_scanner(ExoselfProcess,VL,[Spread,Density,RadialOffset],Scape)->
+	case gen_server:call(Scape,{get_all,avatars,ExoselfProcess}) of
 		destroyed->
 			lists:duplicate(VL,-1);
 		Avatars ->%io:format("Avatars:~p~n",[Avatars]),
-			Self = lists:keyfind(Exoself_PId,2,Avatars),
+			Self = lists:keyfind(ExoselfProcess,2,Avatars),
 			%io:format("Self:~p~n",[Self]),
 			Loc = Self#avatar.loc,
 			Direction = Self#avatar.direction,
-			Result=color_scanner(silent,{1,0,0},Density,Spread,Loc,Direction,lists:keydelete(Exoself_PId, 2, Avatars)),
+			Result=color_scanner(silent,{1,0,0},Density,Spread,Loc,Direction,lists:keydelete(ExoselfProcess, 2, Avatars)),
 			Result
 	end.
 	

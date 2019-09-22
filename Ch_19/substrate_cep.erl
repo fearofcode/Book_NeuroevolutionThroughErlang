@@ -9,33 +9,33 @@
 -compile(export_all).
 -include("records.hrl").
 
-gen(ExoSelf_PId,Node)->
-	spawn(Node,?MODULE,prep,[ExoSelf_PId]).
+gen(ExoSelfProcess,Node)->
+	spawn(Node,?MODULE,prep,[ExoSelfProcess]).
 
-prep(ExoSelf_PId) -> 
+prep(ExoSelfProcess) -> 
 	receive 
-		{ExoSelf_PId,{Id,Cx_PId,Substrate_PId,CEPName,Parameters,Fanin_PIds}} ->
-			loop(Id,ExoSelf_PId,Cx_PId,Substrate_PId,CEPName,Parameters,{Fanin_PIds,Fanin_PIds},[])
+		{ExoSelfProcess,{Id,CortexProcess,SubstrateProcess,CEPName,Parameters,FaninProcess}} ->
+			loop(Id,ExoSelfProcess,CortexProcess,SubstrateProcess,CEPName,Parameters,{FaninProcess,FaninProcess},[])
 	end.
 %When gen/2 is executed it spawns the actuator element and immediately begins to wait for its initial state message.
 
-loop(Id,ExoSelf_PId,Cx_PId,Substrate_PId,CEPName,Parameters,{[From_PId|Fanin_PIds],MFanin_PIds},Acc) ->
+loop(Id,ExoSelfProcess,CortexProcess,SubstrateProcess,CEPName,Parameters,{[FromProcess|FaninProcess],MFaninProcess},Acc) ->
 	receive
-		{From_PId,forward,Input} ->
-			loop(Id,ExoSelf_PId,Cx_PId,Substrate_PId,CEPName,Parameters,{Fanin_PIds,MFanin_PIds},lists:append(Input,Acc));
-		{ExoSelf_PId,terminate} ->
+		{FromProcess,forward,Input} ->
+			loop(Id,ExoSelfProcess,CortexProcess,SubstrateProcess,CEPName,Parameters,{FaninProcess,MFaninProcess},lists:append(Input,Acc));
+		{ExoSelfProcess,terminate} ->
 			%io:format("Substrate_CEP:~p is terminating.~n",[self()])
 			ok
 	end;
-loop(Id,ExoSelf_PId,Cx_PId,Substrate_PId,CEPName,Parameters,{[],MFanin_PIds},Acc)->
+loop(Id,ExoSelfProcess,CortexProcess,SubstrateProcess,CEPName,Parameters,{[],MFaninProcess},Acc)->
 	ProperlyOrdered_Input=lists:reverse(Acc),
-	substrate_cep:CEPName(ProperlyOrdered_Input,Parameters,Substrate_PId),
-	loop(Id,ExoSelf_PId,Cx_PId,Substrate_PId,CEPName,Parameters,{MFanin_PIds,MFanin_PIds},[]).
-%The substrate_cep process gathers the control signals from the neurons, appending them to the accumulator. The order in which the signals are accumulated into a vector is in the same order that the neuron ids are stored within NIds. Once all the signals have been gathered, the substrate_cep executes its function, forwards the processed signal to the substrate, and then again begins to wait for the neural signals from the output layer by reseting the Fanin_PIds from the second copy of the list.
+	substrate_cep:CEPName(ProperlyOrdered_Input,Parameters,SubstrateProcess),
+	loop(Id,ExoSelfProcess,CortexProcess,SubstrateProcess,CEPName,Parameters,{MFaninProcess,MFaninProcess},[]).
+%The substrate_cep process gathers the control signals from the neurons, appending them to the accumulator. The order in which the signals are accumulated into a vector is in the same order that the neuron ids are stored within NeuronIDs. Once all the signals have been gathered, the substrate_cep executes its function, forwards the processed signal to the substrate, and then again begins to wait for the neural signals from the output layer by reseting the FaninProcess from the second copy of the list.
 
 
 %%%%%%%% Substrate_CEPs %%%%%%%% 
-set_weight(Output,_Parameters,Substrate_PId)->
+set_weight(Output,_Parameters,SubstrateProcess)->
 	[Val] = Output,
 	Threshold = 0.33,
 	Weight = if 
@@ -46,13 +46,13 @@ set_weight(Output,_Parameters,Substrate_PId)->
 		true ->
 			0
 	end,
-	Substrate_PId ! {self(),set_weight,[Weight]}.
+	SubstrateProcess ! {self(),set_weight,[Weight]}.
 %
 
-set_abcn(Output,_Parameters,Substrate_PId)->
-	Substrate_PId ! {self(),set_abcn,Output}.
+set_abcn(Output,_Parameters,SubstrateProcess)->
+	SubstrateProcess ! {self(),set_abcn,Output}.
 	
-delta_weight(Output,_Parameters,Substrate_PId)->
+delta_weight(Output,_Parameters,SubstrateProcess)->
 	[Val] = Output,
 	Threshold = 0.33,
 	DW = if 
@@ -63,4 +63,4 @@ delta_weight(Output,_Parameters,Substrate_PId)->
 		true ->
 			0
 	end,
-	Substrate_PId ! {self(),set_iterative,[DW]}.
+	SubstrateProcess ! {self(),set_iterative,[DW]}.

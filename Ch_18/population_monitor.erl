@@ -18,7 +18,7 @@
 -record(state,{
 	op_mode = gt,
 	population_id = test,
-	activeAgent_IdPs = [],
+	activeAgentWeightedInputs = [],
 	agent_ids = [],
 	tot_agents,
 	agents_left,
@@ -83,15 +83,15 @@ init(S) ->
 	OpMode = S#state.op_mode,
 	io:format("******** Population monitor started with parameters:~p~n",[S]),
 	Agent_Ids = extract_AgentIds(Population_Id,all),
-	ActiveAgent_IdPs = summon_agents(OpMode,Agent_Ids),
+	ActiveAgentWeightedInputs = summon_agents(OpMode,Agent_Ids),
 	P = genotype:dirty_read({population,Population_Id}),
 	[put({evaluations,Specie_Id},0) || Specie_Id<-P#population.specie_ids],
 	T = P#population.trace,
-	TotEvaluations=T#trace.tot_evaluations,
-	io:format("Initial Tot Evaluations:~p~n",[TotEvaluations]),
+	TotalEvaluations=T#trace.tot_evaluations,
+	io:format("Initial Total Evaluations:~p~n",[TotalEvaluations]),
 	State = S#state{
 		population_id = Population_Id,
-		activeAgent_IdPs = ActiveAgent_IdPs,
+		activeAgentWeightedInputs = ActiveAgentWeightedInputs,
 		tot_agents = length(Agent_Ids),
 		agents_left = length(Agent_Ids),
 		op_tag = continue,
@@ -100,10 +100,10 @@ init(S) ->
 		selection_algorithm = P#population.selection_f,
 		best_fitness = 0,
 		step_size = T#trace.step_size,
-		tot_evaluations = TotEvaluations
+		tot_evaluations = TotalEvaluations
 	},
 	{ok, State}.
-%In init/1 the population_monitor proces registers itself with the node under the name monitor, and sets all the needed parameters within its #state record. The function first extracts all the Agent_Ids that belong to the population using the extract_AgentIds/2 function. Each agent is then spawned/activated, converted from genotype to phenotype in the summon_agents/2 function. The summon_agents/2 function summons the agents and returns to the caller a list of tuples with the following format: [{Agent_Id,Agent_PId}...]. Once the state record's parameters have been set, the function drops into the main gen_server loop.
+%In init/1 the population_monitor proces registers itself with the node under the name monitor, and sets all the needed parameters within its #state record. The function first extracts all the Agent_Ids that belong to the population using the extract_AgentIds/2 function. Each agent is then spawned/activated, converted from genotype to phenotype in the summon_agents/2 function. The summon_agents/2 function summons the agents and returns to the caller a list of tuples with the following format: [{Agent_Id,AgentProcess}...]. Once the state record's parameters have been set, the function drops into the main gen_server loop.
 
 %%--------------------------------------------------------------------
 %% Function: %% handle_call(Request, From, State) -> {reply, Reply, State} |
@@ -115,8 +115,8 @@ init(S) ->
 %% Description: Handling call messages
 %%--------------------------------------------------------------------
 handle_call({stop,normal},_From, S)->
-	ActiveAgent_IdPs = S#state.activeAgent_IdPs,
-	[Agent_PId ! {self(),terminate} || {_DAgent_Id,Agent_PId}<-ActiveAgent_IdPs],
+	ActiveAgentWeightedInputs = S#state.activeAgentWeightedInputs,
+	[AgentProcess ! {self(),terminate} || {_DAgent_Id,AgentProcess}<-ActiveAgentWeightedInputs],
 	{stop, normal, S};
 handle_call({stop,shutdown},_From,State)->
 	{stop, shutdown, State}.
@@ -149,14 +149,14 @@ handle_cast({Agent_Id,terminated,Fitness},S) when S#state.evolutionary_algorithm
 					case (U_PopGen >= Generation_Limit) or (S#state.tot_evaluations >= Evaluation_Limit) or (BestFitness >= Fitness_Goal) or S#state.goal_reached of
 						true ->%ENDING_CONDITION_REACHED
 							Agent_Ids = extract_AgentIds(Population_Id,all),
-							TotAgents=length(Agent_Ids),
-							U_S=S#state{agent_ids=Agent_Ids, tot_agents=TotAgents, agents_left=TotAgents, pop_gen=U_PopGen},
+							TotalAgents=length(Agent_Ids),
+							U_S=S#state{agent_ids=Agent_Ids, tot_agents=TotalAgents, agents_left=TotalAgents, pop_gen=U_PopGen},
 							{stop,normal,U_S};
 						false ->%IN_PROGRESS
 							Agent_Ids = extract_AgentIds(Population_Id,all),
-							U_ActiveAgent_IdPs=summon_agents(OpMode,Agent_Ids),
-							TotAgents=length(Agent_Ids),
-							U_S=S#state{activeAgent_IdPs=U_ActiveAgent_IdPs, tot_agents=TotAgents, agents_left=TotAgents, pop_gen=U_PopGen},
+							U_ActiveAgentWeightedInputs=summon_agents(OpMode,Agent_Ids),
+							TotalAgents=length(Agent_Ids),
+							U_S=S#state{activeAgentWeightedInputs=U_ActiveAgentWeightedInputs, tot_agents=TotalAgents, agents_left=TotalAgents, pop_gen=U_PopGen},
 							{noreply,U_S}
 					end;
 				done ->
@@ -170,9 +170,9 @@ handle_cast({Agent_Id,terminated,Fitness},S) when S#state.evolutionary_algorithm
 			end;
 		false ->
 			io:format("Agents Left:~p~n",[AgentsLeft-1]),
-			ActiveAgent_IdPs = S#state.activeAgent_IdPs,
-			U_ActiveAgent_Ids = lists:keydelete(Agent_Id,1,ActiveAgent_IdPs),
-			U_S = S#state{activeAgent_IdPs = U_ActiveAgent_Ids,agents_left = AgentsLeft-1},
+			ActiveAgentWeightedInputs = S#state.activeAgentWeightedInputs,
+			U_ActiveAgent_Ids = lists:keydelete(Agent_Id,1,ActiveAgentWeightedInputs),
+			U_S = S#state{activeAgentWeightedInputs = U_ActiveAgent_Ids,agents_left = AgentsLeft-1},
 			{noreply,U_S}
 	end;
 %This clause accepts the cast signals sent by the agents which terminate after finishing with their evaluations. The clause specialises in the "competition" selection algorithm, which is a generational selection algorithm. As a generation selection algorithm, it waits untill the entire population has finished being evaluated, and only then selects the fit from the unfit, and creates the updated population of the next generation. The OpTag can be set from the outsie to shutdown the population_monitor by setting it to done. Once an ending condition is reached, either through a generation limit, an evaluations limit, or fitness goal, the population_monitor exits normally. If the ending condition is not reached, the population_monitor spawns the new generation of agents and awaits again for all the agents in the population to complete their evaluations. If the OpTag is set to pause, it does not generate a new population, and instead goes into a waiting mode, and awaits to be restarted or terminated.
@@ -189,12 +189,12 @@ handle_cast({Agent_Id,terminated,Fitness},S) when S#state.evolutionary_algorithm
 	end,
 	case (S#state.tot_evaluations >= Evaluation_Limit) or (NewBestFitness > Fitness_Goal) or S#state.goal_reached of
 		true ->
-			case lists:keydelete(Agent_Id,1,S#state.activeAgent_IdPs) of
+			case lists:keydelete(Agent_Id,1,S#state.activeAgentWeightedInputs) of
 				[] ->
-					U_S=S#state{activeAgent_IdPs=[]},
+					U_S=S#state{activeAgentWeightedInputs=[]},
 					{stop,normal,U_S};
-				U_ActiveAgent_IdPs ->
-					U_S=S#state{activeAgent_IdPs=U_ActiveAgent_IdPs},
+				U_ActiveAgentWeightedInputs ->
+					U_S=S#state{activeAgentWeightedInputs=U_ActiveAgentWeightedInputs},
 					{noreply,U_S}
 			end;
 		false ->
@@ -207,41 +207,41 @@ handle_cast({Agent_Id,terminated,Fitness},S) when S#state.evolutionary_algorithm
 			Specie = genotype:dirty_read({specie,Specie_Id}),
 			Old_DeadPool_AgentSummaries = Specie#specie.dead_pool,
 			Old_Agent_Ids = Specie#specie.agent_ids,
-			[AgentSummary] = construct_AgentSummaries([Agent_Id],[]),
+			[AgentSummary] = constructAgentSummaries([Agent_Id],[]),
 			DeadPool_AgentSummaries = [AgentSummary|Old_DeadPool_AgentSummaries],
 			ProperlySorted_AgentSummaries = fitness_postprocessor:FitnessPostprocessorName(DeadPool_AgentSummaries),
 	
 			Valid_AgentSummaries = case length(ProperlySorted_AgentSummaries) >= S#state.specie_size_limit of
 				true ->
-					[{InvalidFitness,InvalidTotN,InvalidAgent_Id}|Remaining_AgentSummaries] = lists:reverse(ProperlySorted_AgentSummaries),
-%					io:format("Informationtheoretic Death:~p::~p~n",[InvalidAgent_Id,{InvalidFitness,InvalidTotN,InvalidAgent_Id}]),
-					genotype:delete_Agent(InvalidAgent_Id,safe),
+					[{InvalidFitness,InvalidTotalN,InvalidAgent_Id}|Remaining_AgentSummaries] = lists:reverse(ProperlySorted_AgentSummaries),
+%					io:format("Informationtheoretic Death:~p::~p~n",[InvalidAgent_Id,{InvalidFitness,InvalidTotalN,InvalidAgent_Id}]),
+					genotype:deleteAgent(InvalidAgent_Id,safe),
 					lists:reverse(Remaining_AgentSummaries);
 				false ->
 					ProperlySorted_AgentSummaries
 			end,
 			io:format("Valid_AgentSummaries:~p~n",[Valid_AgentSummaries]),
 			{WinnerFitness,WinnerProfile,WinnerAgent_Id} = selection_algorithm:SelectionAlgorithmName(Valid_AgentSummaries),
-			ActiveAgent_IdP = case random:uniform() < 0.1 of
+			ActiveAgent_IdP = case rand:uniform() < 0.1 of
 				true ->
 					U_DeadPool_AgentSummaries = lists:delete({WinnerFitness,WinnerProfile,WinnerAgent_Id},Valid_AgentSummaries),
-					WinnerAgent_PId = Agent_PId = exoself:start(WinnerAgent_Id,self()),
-					{WinnerAgent_Id,WinnerAgent_PId};
+					WinnerAgentProcess = AgentProcess = exoself:start(WinnerAgent_Id,self()),
+					{WinnerAgent_Id,WinnerAgentProcess};
 				false ->
 					U_DeadPool_AgentSummaries = Valid_AgentSummaries,
 					CloneAgent_Id = create_MutantAgentCopy(WinnerAgent_Id,safe),
-					CloneAgent_PId = exoself:start(CloneAgent_Id,self()),
-					{CloneAgent_Id,CloneAgent_PId}
+					CloneAgentProcess = exoself:start(CloneAgent_Id,self()),
+					{CloneAgent_Id,CloneAgentProcess}
 			end,
 			Top_AgentSummaries = lists:sublist(U_DeadPool_AgentSummaries,round(S#state.specie_size_limit*S#state.survival_percentage)),
 			{_,_,TopAgent_Ids} = lists:unzip3(lists:sublist(Top_AgentSummaries,3)),
 %			io:format("TopAgent_Ids:~p~n",[TopAgent_Ids]),
 			USpecie=genotype:dirty_read({specie,Specie_Id}),
 			genotype:write(USpecie#specie{dead_pool = U_DeadPool_AgentSummaries,champion_ids = TopAgent_Ids}),
-			ActiveAgent_IdPs = S#state.activeAgent_IdPs,
-			U_ActiveAgent_IdPs = [ActiveAgent_IdP|lists:keydelete(Agent_Id,1,ActiveAgent_IdPs)],
+			ActiveAgentWeightedInputs = S#state.activeAgentWeightedInputs,
+			U_ActiveAgentWeightedInputs = [ActiveAgent_IdP|lists:keydelete(Agent_Id,1,ActiveAgentWeightedInputs)],
 			U_S=S#state{
-				activeAgent_IdPs=U_ActiveAgent_IdPs,
+				activeAgentWeightedInputs=U_ActiveAgentWeightedInputs,
 				best_fitness=NewBestFitness
 			},
 			{noreply,U_S}
@@ -256,9 +256,9 @@ handle_cast({op_tag,continue},S) when S#state.op_tag == pause ->
 	Population_Id = S#state.population_id,
 	OpMode = S#state.op_mode,
 	Agent_Ids = extract_AgentIds(Population_Id,all),
-	U_ActiveAgent_IdPs=summon_agents(OpMode,Agent_Ids),
-	TotAgents=length(Agent_Ids),
-	U_S=S#state{activeAgent_IdPs=U_ActiveAgent_IdPs,tot_agents=TotAgents,agents_left=TotAgents,op_tag=continue},
+	U_ActiveAgentWeightedInputs=summon_agents(OpMode,Agent_Ids),
+	TotalAgents=length(Agent_Ids),
+	U_S=S#state{activeAgentWeightedInputs=U_ActiveAgentWeightedInputs,tot_agents=TotalAgents,agents_left=TotalAgents,op_tag=continue},
 	{noreply,U_S};
 %The population_monitor process can accept a continue command if its current op_tag is set to pause. When it receives a continue command, it summons all the agents in the population, and continues with its neuroevolution synchronization duties.
 
@@ -273,7 +273,7 @@ handle_cast({From,evaluations,Specie_Id,AEA,AgentCycleAcc,AgentTimeAcc},S)->
 	U_EvalAcc = S#state.eval_acc+AgentEvalAcc,
 	U_CycleAcc = S#state.cycle_acc+AgentCycleAcc,
 	U_TimeAcc = S#state.time_acc+AgentTimeAcc,
-	U_TotEvaluations = S#state.tot_evaluations + AgentEvalAcc,
+	U_TotalEvaluations = S#state.tot_evaluations + AgentEvalAcc,
 	SEval_Acc=get({evaluations,Specie_Id}),
 	put({evaluations,Specie_Id},SEval_Acc+AgentEvalAcc),
 	case Eval_Acc rem 50 of
@@ -288,11 +288,11 @@ handle_cast({From,evaluations,Specie_Id,AEA,AgentCycleAcc,AgentTimeAcc},S)->
 			Population_Id = S#state.population_id,
 			P = genotype:dirty_read({population,Population_Id}),
 			T = P#population.trace,
-			TotEvaluations=T#trace.tot_evaluations,
-			io:format("Tot Evaluations:~p~n",[TotEvaluations]),
-			S#state{eval_acc=0, cycle_acc=0, time_acc=0, tot_evaluations=U_TotEvaluations};
+			TotalEvaluations=T#trace.tot_evaluations,
+			io:format("Total Evaluations:~p~n",[TotalEvaluations]),
+			S#state{eval_acc=0, cycle_acc=0, time_acc=0, tot_evaluations=U_TotalEvaluations};
 		false ->
-			S#state{eval_acc=U_EvalAcc,cycle_acc=U_CycleAcc,time_acc=U_TimeAcc,tot_evaluations=U_TotEvaluations}
+			S#state{eval_acc=U_EvalAcc,cycle_acc=U_CycleAcc,time_acc=U_TimeAcc,tot_evaluations=U_TotalEvaluations}
 	end,
 	{noreply,U_S};
 
@@ -328,9 +328,9 @@ terminate(Reason, S) ->
 		_ ->
 			OpMode = S#state.op_mode,
 			OpTag = S#state.op_tag,
-			TotEvaluations=S#state.tot_evaluations,
+			TotalEvaluations=S#state.tot_evaluations,
 			Population_Id = S#state.population_id,
-			case TotEvaluations < 500 of
+			case TotalEvaluations < 500 of
 				true ->%So that there is at least one stat in the stats list.
 					gather_STATS(Population_Id,0);
 				false ->
@@ -338,19 +338,19 @@ terminate(Reason, S) ->
 			end,
 			P = genotype:dirty_read({population,Population_Id}),
 			T = P#population.trace,
-			U_T = T#trace{tot_evaluations=TotEvaluations},
+			U_T = T#trace{tot_evaluations=TotalEvaluations},
 			U_P = P#population{trace=U_T},
 			genotype:write(U_P),
 			io:format("******** TRACE START ********~n"),
 			io:format("~p~n",[U_T]),
 			io:format("******** ^^^^ TRACE END ^^^^ ********~n"),
 			io:format("******** Population_Monitor:~p shut down with Reason:~p OpTag:~p, while in OpMode:~p~n",[Population_Id,Reason,OpTag,OpMode]),
-			io:format("******** Tot Agents:~p Population Generation:~p Tot_Evals:~p~n",[S#state.tot_agents,S#state.pop_gen,S#state.tot_evaluations]),
+			io:format("******** Total Agents:~p Population Generation:~p Total_Evals:~p~n",[S#state.tot_agents,S#state.pop_gen,S#state.tot_evaluations]),
 			case S#state.benchmarker_pid of
 				undefined ->
 					ok;
-				PId ->
-					PId ! {S#state.population_id,completed,U_T}
+				ProcessID ->
+					ProcessID ! {S#state.population_id,completed,U_T}
 			end
 	end.
 %When the population_monitor process terminates, it states so, notifies with what op_tag and op_mode it terminated, all the stats gathered, and then shuts down.
@@ -400,11 +400,11 @@ summon_agents(OpMode,Agent_Ids)->
 	summon_agents(OpMode,Agent_Ids,[]).
 summon_agents(OpMode,[Agent_Id|Agent_Ids],Acc)->
 %	io:format("Agent_Id:~p~n",[Agent_Id]),
-	Agent_PId = exoself:start(Agent_Id,self()),
-	summon_agents(OpMode,Agent_Ids,[{Agent_Id,Agent_PId}|Acc]);
+	AgentProcess = exoself:start(Agent_Id,self()),
+	summon_agents(OpMode,Agent_Ids,[{Agent_Id,AgentProcess}|Acc]);
 summon_agents(_OpMode,[],Acc)->
 	Acc.
-%The summon_agents/2 and summon_agents/3 spawns all the agents in the Agent_ids list, and returns to the caller a list of tuples as follows: [{Agent_Id,Agent_PId}...].
+%The summon_agents/2 and summon_agents/3 spawns all the agents in the Agent_ids list, and returns to the caller a list of tuples as follows: [{Agent_Id,AgentProcess}...].
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 test()->
@@ -479,9 +479,9 @@ init_population(Init_State,Specie_Constraints)->
 			Specie_Id;
 		create_specie(Population_Id,Specie_Id,Agent_Index,IdAcc,SpeCon,Fingerprint)->
 			Agent_Id = {genotype:generate_UniqueId(),agent},
-			genotype:construct_Agent(Specie_Id,Agent_Id,SpeCon),
+			genotype:constructAgent(Specie_Id,Agent_Id,SpeCon),
 			create_specie(Population_Id,Specie_Id,Agent_Index-1,[Agent_Id|IdAcc],SpeCon,Fingerprint).
-%The create_Population/3 generates length(Specie_Constraints) number of specie, each composed of ?INIT_SPECIE_SIZE number of agents. The function uses the create_specie/4 to generate the species. The create_specie/3 and create_specie/4 functions are simplified versions which use default parameters to call the create_specie/6 function. The create_specie/6 function constructs the agents using the genotype:construct_Agent/3 function, accumulating the Agent_Ids in the IdAcc list. Once all the agents have been created, the function creates the specie record, fills in the required elements, writes the specie to database, and then finally returns the Specie_Id to the caller.
+%The create_Population/3 generates length(Specie_Constraints) number of specie, each composed of ?INIT_SPECIE_SIZE number of agents. The function uses the create_specie/4 to generate the species. The create_specie/3 and create_specie/4 functions are simplified versions which use default parameters to call the create_specie/6 function. The create_specie/6 function constructs the agents using the genotype:constructAgent/3 function, accumulating the Agent_Ids in the IdAcc list. Once all the agents have been created, the function creates the specie record, fills in the required elements, writes the specie to database, and then finally returns the Specie_Id to the caller.
 
 continue()->
 	random:seed(now()),
@@ -492,21 +492,21 @@ continue(Population_Id)->
 	population_monitor:start(S).
 %The function continue/0 and continue/1 are used to summon an already existing population with either the default population Id, or the specified Population_Id.
 
-mutate_population(Population_Id,KeepTot,Fitness_Postprocessor,Selection_Algorithm)->
+mutate_population(Population_Id,KeepTotal,Fitness_Postprocessor,Selection_Algorithm)->
 	NeuralEnergyCost = calculate_EnergyCost(Population_Id),
 	F = fun()->
 		P = genotype:read({population,Population_Id}),
 		Specie_Ids = P#population.specie_ids,
-		[mutate_Specie(Specie_Id,KeepTot,NeuralEnergyCost,Fitness_Postprocessor,Selection_Algorithm) || Specie_Id <- Specie_Ids]
+		[mutate_Specie(Specie_Id,KeepTotal,NeuralEnergyCost,Fitness_Postprocessor,Selection_Algorithm) || Specie_Id <- Specie_Ids]
 	end,
 	{atomic,_} = mnesia:transaction(F).
-%The function mutate_population/3 mutates the agents within every specie in its specie_ids list, maintianing each specie within the size of KeepTot. The function first calculates the average cost of each neuron, and then calls each specie seperately with the Fitness_Postprocessor and Selection_Algorithm parameters, which are used to mutate the species.
+%The function mutate_population/3 mutates the agents within every specie in its specie_ids list, maintianing each specie within the size of KeepTotal. The function first calculates the average cost of each neuron, and then calls each specie seperately with the Fitness_Postprocessor and Selection_Algorithm parameters, which are used to mutate the species.
 
 	mutate_Specie(Specie_Id,PopulationLimit,NeuralEnergyCost,Fitness_Postprocessor_Name,Selection_Algorithm_Name)->
 		S = genotype:dirty_read({specie,Specie_Id}),
 		{AvgFitness,Std,MaxFitness,MinFitness} = calculate_SpecieFitness({specie,S}),
 		Agent_Ids = S#specie.agent_ids,
-		Sorted_AgentSummaries = lists:reverse(lists:sort(construct_AgentSummaries(Agent_Ids,[]))),
+		Sorted_AgentSummaries = lists:reverse(lists:sort(constructAgentSummaries(Agent_Ids,[]))),
 		io:format("Using: Fitness Postprocessor:~p Selection Algorirthm:~p~n",[Fitness_Postprocessor_Name,Selection_Algorithm_Name]),
 		ProperlySorted_AgentSummaries = fitness_postprocessor:Fitness_Postprocessor_Name(Sorted_AgentSummaries),
 		{NewGenAgent_Ids,TopAgent_Ids} = selection_algorithm:Selection_Algorithm_Name(ProperlySorted_AgentSummaries,NeuralEnergyCost,PopulationLimit),
@@ -526,15 +526,15 @@ mutate_population(Population_Id,KeepTot,Fitness_Postprocessor,Selection_Algorith
 			innovation_factor = U_InnovationFactor}).
 %The function mutate_Specie/5 calls the selection algorithm function to seperate the fit from the unfit organisms in the specie, and then mutates the fit organisms to produce offspring, maintaning the total specie size within PopulationLimit. The function first calls the fitness_postprocessor which sorts the agent summaries. Then, the resorted updated summaries are split into a valid (fit) and invalid (unfit) lists of agents by the selection algorithm. The invalid agents are deleted, and the valid agents are used to create offspring using the particular Selection_Algorithm_Name function. The agent ids belonging to the next generation (the valid agents and their offspring) are then produced by the selection function. Finally, the innovation factor (the last time the specie's top fitness improved) is updated, the ids of the 3 top agents within the species are noted, and the updated specie record is written to database.
 
-	construct_AgentSummaries([Agent_Id|Agent_Ids],Acc)->
+	constructAgentSummaries([Agent_Id|Agent_Ids],Acc)->
 		A = genotype:dirty_read({agent,Agent_Id}),
-		construct_AgentSummaries(Agent_Ids,[{A#agent.fitness,length((genotype:dirty_read({cortex,A#agent.cx_id}))#cortex.neuron_ids),Agent_Id}|Acc]);
-	construct_AgentSummaries([],Acc)->
+		constructAgentSummaries(Agent_Ids,[{A#agent.fitness,length((genotype:dirty_read({cortex,A#agent.cortex_id}))#cortex.neuron_ids),Agent_Id}|Acc]);
+	constructAgentSummaries([],Acc)->
 		Acc.
-%The construct_AgentSummaries/2 reads the agents in the Agent_Ids list, and composes a list of tuples of the following format: [{AgentFitness,AgentTotNeurons,Agent_Id}...]. This list of tuples is reffered to as AgentSummaries. Once the AgentSummaries list is composed, it is returned to the caller.
+%The constructAgentSummaries/2 reads the agents in the Agent_Ids list, and composes a list of tuples of the following format: [{AgentFitness,AgentTotalNeurons,Agent_Id}...]. This list of tuples is reffered to as AgentSummaries. Once the AgentSummaries list is composed, it is returned to the caller.
 
 	create_MutantAgentCopy(Agent_Id)->
-		AgentClone_Id = genotype:clone_Agent(Agent_Id),
+		AgentClone_Id = genotype:cloneAgent(Agent_Id),
 		io:format("AgentClone_Id:~p~n",[AgentClone_Id]),
 		genome_mutator:mutate(AgentClone_Id),
 		AgentClone_Id.
@@ -543,7 +543,7 @@ mutate_population(Population_Id,KeepTot,Fitness_Postprocessor,Selection_Algorith
 	create_MutantAgentCopy(Agent_Id,safe)->%TODO
 		A = genotype:dirty_read({agent,Agent_Id}),
 		S = genotype:dirty_read({specie,A#agent.specie_id}),
-		AgentClone_Id = genotype:clone_Agent(Agent_Id),
+		AgentClone_Id = genotype:cloneAgent(Agent_Id),
 		Agent_Ids = S#specie.agent_ids,
 		genotype:write(S#specie{agent_ids = [AgentClone_Id|Agent_Ids]}),
 		io:format("AgentClone_Id:~p~n",[AgentClone_Id]),
@@ -561,28 +561,28 @@ delete_population(Population_Id)->
 	delete_specie(Specie_Id)->
 		S = genotype:dirty_read({specie,Specie_Id}),
 		Agent_Ids = S#specie.agent_ids,
-		[genotype:delete_Agent(Agent_Id) || Agent_Id <- Agent_Ids],
+		[genotype:deleteAgent(Agent_Id) || Agent_Id <- Agent_Ids],
 		mnesia:delete({specie,Specie_Id}).
 %The delete_specie/1 function delets the agents associated with the Specie_Id, and then delets the specie record itself.
 			
 calculate_EnergyCost(Population_Id)->
 	Agent_Ids = extract_AgentIds(Population_Id,all),
-	TotEnergy = lists:sum([extract_AgentFitness(Agent_Id) || Agent_Id<-Agent_Ids]),
-	TotNeurons = lists:sum([extract_AgentTotNeurons(Agent_Id) || Agent_Id <- Agent_Ids]),
-	EnergyCost = TotEnergy/TotNeurons,
+	TotalEnergy = lists:sum([extract_AgentFitness(Agent_Id) || Agent_Id<-Agent_Ids]),
+	TotalNeurons = lists:sum([extract_AgentTotalNeurons(Agent_Id) || Agent_Id <- Agent_Ids]),
+	EnergyCost = TotalEnergy/TotalNeurons,
 	EnergyCost.
-%The calculate_EnergyCost/1 calculates the average cost of each neuron, based on the fitness of each agent in the population, and the total number of neurons in the population. The value is calcualted by first adding up all the fitness scores of the agents belonging to the population. Then adding up the total number of neurons composing each agent in the population. And then finally producing the EnergyCost value by dividing the TotEnergy by TotNeurons, returning the value to the caller.
+%The calculate_EnergyCost/1 calculates the average cost of each neuron, based on the fitness of each agent in the population, and the total number of neurons in the population. The value is calcualted by first adding up all the fitness scores of the agents belonging to the population. Then adding up the total number of neurons composing each agent in the population. And then finally producing the EnergyCost value by dividing the TotalEnergy by TotalNeurons, returning the value to the caller.
 
-	extract_AgentTotNeurons(Agent_Id)->
+	extract_AgentTotalNeurons(Agent_Id)->
 		A = genotype:dirty_read({agent,Agent_Id}),
-		Cx = genotype:dirty_read({cortex,A#agent.cx_id}),
-		Neuron_Ids = Cx#cortex.neuron_ids,
+		Cortex = genotype:dirty_read({cortex,A#agent.cortex_id}),
+		Neuron_Ids = Cortex#cortex.neuron_ids,
 		length(Neuron_Ids).
 	
 	extract_AgentFitness(Agent_Id)->
 		A = genotype:dirty_read({agent,Agent_Id}),
 		A#agent.fitness.
-%The function extract_AgentTotNeurons simply extracts the neuron_ids list, and returns the length of that list, which is the total number of neurons belonging to the NN based system.
+%The function extract_AgentTotalNeurons simply extracts the neuron_ids list, and returns the length of that list, which is the total number of neurons belonging to the NN based system.
 
 calculate_PopulationFitness(Population_Id,[Specie_Id|Specie_Ids],AvgFAcc,MaxFAcc,MinFAcc)->
 	{AvgFitness,Std,MaxF,MinF}=calculate_SpecieFitness(Specie_Id),
@@ -645,10 +645,10 @@ gather_STATS(Population_Id,EvaluationsAcc)->
 		SpecieSTATS = [update_SpecieSTAT(Specie_Id,TimeStamp) || Specie_Id<-P#population.specie_ids],
 		PopulationSTATS = T#trace.stats,
 		U_PopulationSTATS = [SpecieSTATS|PopulationSTATS],
-		U_TotEvaluations = T#trace.tot_evaluations+EvaluationsAcc,
+		U_TotalEvaluations = T#trace.tot_evaluations+EvaluationsAcc,
 		U_Trace = T#trace{
 			stats = U_PopulationSTATS,
-			tot_evaluations=U_TotEvaluations
+			tot_evaluations=U_TotalEvaluations
 		},
 		io:format("Population Trace:~p~n",[U_Trace]),
 		mnesia:write(P#population{trace=U_Trace})
@@ -692,9 +692,9 @@ calculate_SpecieAvgNodes(Specie_Id)->
 	calculate_AvgNodes([Agent_Id|Agent_Ids],NAcc)->
 		io:format("calculate_AvgNodes/2 Agent_Id:~p~n",[Agent_Id]),
 		A = genotype:read({agent,Agent_Id}),
-		Cx = genotype:read({cortex,A#agent.cx_id}),
-		Tot_Neurons = length(Cx#cortex.neuron_ids),
-		calculate_AvgNodes(Agent_Ids,[Tot_Neurons|NAcc]);
+		Cortex = genotype:read({cortex,A#agent.cortex_id}),
+		Total_Neurons = length(Cortex#cortex.neuron_ids),
+		calculate_AvgNodes(Agent_Ids,[Total_Neurons|NAcc]);
 	calculate_AvgNodes([],NAcc)->
 		{functions:avg(NAcc),functions:std(NAcc)}.
 
@@ -707,7 +707,7 @@ calculate_PopulationDiversity(Population_Id,[Specie_Id|Specie_Ids],Acc)->
 			put({diversity,Specie_Id},[Diversity|PrevGenDiversity])
 	end,
 	calculate_PopulationDiversity(Population_Id,Specie_Ids,[{Specie_Id,Diversity}|Acc]);
-calculate_PopulationDiversity(_Tot_Population_Id,[],Acc)->
+calculate_PopulationDiversity(_Total_Population_Id,[],Acc)->
 	Acc.
 
 	calculate_SpecieDiversity({specie,S})->

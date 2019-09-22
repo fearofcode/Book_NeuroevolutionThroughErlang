@@ -9,5 +9,5 @@
 -compile(export_all).
 -include("records.hrl").
 
-none(_IAcc,Input_PIdPs,_Output)->
-	Input_PIdPs.
+none(_IAcc,WeightedInputProcess,_Output)->
+	WeightedInputProcess.

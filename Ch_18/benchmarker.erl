@@ -106,7 +106,7 @@ report(Experiment_Id,FileName)->
 	Graphs = prepare_Graphs(Traces),
 	write_Graphs(Graphs,FileName++"_Graphs"),
 	Eval_List = [T#trace.tot_evaluations||T<-Traces],
-	io:format("Tot Evaluations Avg:~p Std:~p~n",[functions:avg(Eval_List),functions:std(Eval_List)]).
+	io:format("Total Evaluations Avg:~p Std:~p~n",[functions:avg(Eval_List),functions:std(Eval_List)]).
 
 -record(graph,{morphology,avg_neurons=[],neurons_std=[],avg_fitness=[],fitness_std=[],max_fitness=[],min_fitness=[],avg_diversity=[],diversity_std=[],evaluations=[],evaluation_Index=[]}).
 -record(avg,{avg_neurons=[],neurons_std=[],avg_fitness=[],fitness_std=[],max_fitness=[],min_fitness=[],avg_diversity=[],diversity_std=[],evaluations=[]}).

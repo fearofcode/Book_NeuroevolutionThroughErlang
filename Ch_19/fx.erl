@@ -142,10 +142,10 @@ market_properties(CurrencyPair,Feature,Parameters,StartIndex,EndIndex)->
 		AvgRandomProfit=lists:sum([random_profit(CurrencyPair,InitS,A) || _<-lists:seq(1,1000)])/1000,
 		erase().
 	random_profit(CurrencyPair,S,A)->
-		Trade_Signal = random:uniform(3)-2,
+		Trade_Signal = rand:uniform(3)-2,
 		case profit_trade(S,A,Trade_Signal) of
-			{U_S,U_A}->
-				random_profit(CurrencyPair,U_S,U_A);
+			{U_S,UpdatedActuator}->
+				random_profit(CurrencyPair,U_S,UpdatedActuator);
 			Profit ->
 				Profit
 		end.
@@ -167,8 +167,8 @@ market_properties(CurrencyPair,Feature,Parameters,StartIndex,EndIndex)->
 			true -> 0
 		end,
 		case forward(CurrencyPair,S,A,TradeSignal,Index,FlipIndex) of
-			{U_S,U_A} ->
-				max_profit(CurrencyPair,U_S,U_A);
+			{U_S,UpdatedActuator} ->
+				max_profit(CurrencyPair,U_S,UpdatedActuator);
 			_ ->
 				ok
 		end.
@@ -219,9 +219,9 @@ market_properties(CurrencyPair,Feature,Parameters,StartIndex,EndIndex)->
 		forward(CurrencyPair,S,A,TradeSignal,FlipIndex,FlipIndex)->
 			profit_trade(S,A,TradeSignal);
 		forward(CurrencyPair,S,A,TradeSignal,Index,FlipIndex)->
-			{U_S,U_A}=profit_trade(S,A,TradeSignal),
+			{U_S,UpdatedActuator}=profit_trade(S,A,TradeSignal),
 			NextIndex = U_S#state.index,
-			forward(CurrencyPair,U_S,U_A,TradeSignal,NextIndex,FlipIndex).
+			forward(CurrencyPair,U_S,UpdatedActuator,TradeSignal,NextIndex,FlipIndex).
 			
 		max_profit_sense(S,A,Parameters)->
 			{Result,U_S} = sense(S,Parameters),
@@ -233,36 +233,36 @@ market_properties(CurrencyPair,Feature,Parameters,StartIndex,EndIndex)->
 				undefined -> put(trade_signal,[TradeSignal]);
 				TSL -> put(trade_signal,[TradeSignal|TSL])
 			end,
-			U_A = make_trade(S,A,TradeSignal),
-			Total_Profit = A#account.balance + A#account.unrealized_PL,
-%			io:format("TP:~p~n",[Total_Profit]),
-			case (U_A#account.balance + U_A#account.unrealized_PL) =< 100 of
+			UpdatedActuator = make_trade(S,A,TradeSignal),
+			Totalal_Profit = A#account.balance + A#account.unrealized_PL,
+%			io:format("TP:~p~n",[Totalal_Profit]),
+			case (UpdatedActuator#account.balance + UpdatedActuator#account.unrealized_PL) =< 100 of
 				true ->
 					io:format("Lost all money~n"),
-					(U_A#account.balance + U_A#account.unrealized_PL);
+					(UpdatedActuator#account.balance + UpdatedActuator#account.unrealized_PL);
 %					io:format("******************************FINISHED PROCESSING TRADE SIGNAL******************************~n");
 				false ->
 					case update_state(S) of
 						sim_over ->
-							Total_Profit = A#account.balance + A#account.unrealized_PL,
-							io:format("Sim Over:~p~n",[Total_Profit]),
-							Total_Profit;
+							Totalal_Profit = A#account.balance + A#account.unrealized_PL,
+							io:format("Sim Over:~p~n",[Totalal_Profit]),
+							Totalal_Profit;
 %							io:format("******************************FINISHED PROCESSING TRADE SIGNAL******************************~n");
 						U_S ->
-							U_A2 = update_account(U_S,U_A),
+							U_A2 = update_account(U_S,UpdatedActuator),
 %							io:format("******************************FINISHED PROCESSING TRADE SIGNAL******************************~n"),
 							{U_S,U_A2}
 					end
 			end.
 
-ts(PId)->
-	PId ! {self(),sense,'EURUSD15',close,[HRes=5,VRes=5,graph_sensor]},
+ts(ProcessID)->
+	ProcessID ! {self(),sense,'EURUSD15',close,[HRes=5,VRes=5,graph_sensor]},
 	receive 
 		{From,Result}->
 			io:format("From:~p Result:~p~n",[From,Result])
 	end.
-tt(PId,TradeSignal)->
-	PId ! {self(),trade,'EURUSD15',TradeSignal},
+tt(ProcessID,TradeSignal)->
+	ProcessID ! {self(),trade,'EURUSD15',TradeSignal},
 	receive 
 		{From,Result}->
 			io:format("Trade_Signal:~p~n Result:~p~n",[TradeSignal,Result])
@@ -320,8 +320,8 @@ sim(ExoSelf,S,A)->
 			fx:sim(ExoSelf,S,A);
 		{From,trade,TableName,TradeSignal}->
 			%io:format("******************************STARTING TO PROCESS TRADE SIGNAL******************************~n"),
-			U_A = make_trade(S,A,TradeSignal),
-			Total_Profit = A#account.balance + A#account.unrealized_PL,
+			UpdatedActuator = make_trade(S,A,TradeSignal),
+			Totalal_Profit = A#account.balance + A#account.unrealized_PL,
 			
 			case ?ACTUATOR_CA_TAG of
 				true ->
@@ -332,11 +332,11 @@ sim(ExoSelf,S,A)->
 					NextRowT = fx:lookup(TableName,NextIndexT),
 					QuoteT = RowT#technical.close,
 					NextQuoteT = NextRowT#technical.close,
-					io:format("Trade~n Index:~p~n Quote:~p~n Next Index:~p~n Next Quote:~p~n TradeSignal:~p~n NetWorth:~p~n",[IndexT,QuoteT,NextIndexT,NextQuoteT,TradeSignal,Total_Profit]);
+					io:format("Trade~n Index:~p~n Quote:~p~n Next Index:~p~n Next Quote:~p~n TradeSignal:~p~n NetWorth:~p~n",[IndexT,QuoteT,NextIndexT,NextQuoteT,TradeSignal,Totalal_Profit]);
 				false ->
 					ok
 			end,
-			case (U_A#account.balance + U_A#account.unrealized_PL) =< 100 of
+			case (UpdatedActuator#account.balance + UpdatedActuator#account.unrealized_PL) =< 100 of
 				true ->
 					From ! {self(),0,1},
 					io:format("Lost all money~n"),
@@ -346,15 +346,15 @@ sim(ExoSelf,S,A)->
 				false ->
 					case update_state(S) of
 						sim_over ->
-							Total_Profit = A#account.balance + A#account.unrealized_PL,
-							From ! {self(),Total_Profit,1},
-							%io:format("Sim Over:~p~n",[Total_Profit]),
+							Totalal_Profit = A#account.balance + A#account.unrealized_PL,
+							From ! {self(),Totalal_Profit,1},
+							%io:format("Sim Over:~p~n",[Totalal_Profit]),
 							%io:format("******************************FINISHED PROCESSING TRADE SIGNAL******************************~n"),
 							put(prev_PC,0),
 							fx:sim(ExoSelf,#state{},#account{});
 						U_S ->
 							From ! {self(),0,0},
-							U_A2 = update_account(U_S,U_A),
+							U_A2 = update_account(U_S,UpdatedActuator),
 							%io:format("******************************FINISHED PROCESSING TRADE SIGNAL******************************~n"),
 							fx:sim(ExoSelf,U_S,U_A2)
 					end
@@ -416,11 +416,11 @@ update_account(S,A)->
 			Unrealized_PL = Profit,
 			Net_Asset_Value = Balance + Unrealized_PL,
 			U_O = O#order{current=Close,change=Change,percentage_change=Percentage_Change,profit=Profit},
-			U_A = A#account{unrealized_PL=Unrealized_PL,net_asset_value=Net_Asset_Value,order=U_O},
+			UpdatedActuator = A#account{unrealized_PL=Unrealized_PL,net_asset_value=Net_Asset_Value,order=U_O},
 %			io:format("Updated Account & Order: Close:~p Units:~p ~n",[Close,Units]),
-%				r(U_A),r(U_O),
+%				r(UpdatedActuator),r(U_O),
 			put(prev_PC,O#order.percentage_change),
-			U_A
+			UpdatedActuator
 	end.
 
 r()->r(#account{}).
@@ -468,8 +468,8 @@ make_trade(S,A,Action)->
 						true ->
 							A;
 						false ->
-							U_A=close_order(S,A),
-							open_order(S,U_A,Action)
+							UpdatedActuator=close_order(S,A),
+							open_order(S,UpdatedActuator,Action)
 					end
 			end
 	end.
@@ -615,8 +615,8 @@ loop()->
 	TableNames = ?ALL_TABLES,
 	TableTuples = summon_tables(TableNames,[]),
 	io:format("******** FX Tables:~p started~n",[TableTuples]),
-	HeartBeat_PId = spawn(fx,heartbeat,[self(),TableNames,5000]),
-	loop(TableNames,HeartBeat_PId).
+	HeartBeatProcess = spawn(fx,heartbeat,[self(),TableNames,5000]),
+	loop(TableNames,HeartBeatProcess).
 
 	summon_tables([TableName|TableNames],TableTupleAcc)->
 		case ets:file2tab(?FX_TABLES_DIR++atom_to_list(TableName)) of
@@ -629,28 +629,28 @@ loop()->
 	summon_tables([],TableTupleAcc)->
 		TableTupleAcc.
 
-loop(TableNames,HeartBeat_PId)->
+loop(TableNames,HeartBeatProcess)->
 	receive
 		{new_time,NewTime}->
-			HeartBeat_PId ! {self(),new_time,NewTime},
-			fx:loop(TableNames,HeartBeat_PId);
-		{HeartBeat_PId,tables_updated,NewestKey} ->
+			HeartBeatProcess ! {self(),new_time,NewTime},
+			fx:loop(TableNames,HeartBeatProcess);
+		{HeartBeatProcess,tables_updated,NewestKey} ->
 			void,
-			fx:loop(TableNames,HeartBeat_PId);
+			fx:loop(TableNames,HeartBeatProcess);
 		backup ->
 			backup(TableNames,[]),
-			fx:loop(TableNames,HeartBeat_PId);
+			fx:loop(TableNames,HeartBeatProcess);
 		stop ->
 			backup(TableNames,[]),
 			terminate(TableNames),
-			HeartBeat_PId ! {self(),terminate},
+			HeartBeatProcess ! {self(),terminate},
 			ok;
 		terminate ->
 			terminate(TableNames),
-			HeartBeat_PId ! {self(),terminate},
+			HeartBeatProcess ! {self(),terminate},
 			ok
 		after 10000 ->
-			fx:loop(TableNames,HeartBeat_PId)
+			fx:loop(TableNames,HeartBeatProcess)
 	end.
 	
 	terminate(TableNames)->
@@ -681,16 +681,16 @@ terminate() ->
 backup_tables()->
 	fx ! backup.
 	
-heartbeat(FXTables_PId,TableNames,Time)->
+heartbeat(FXTablesProcess,TableNames,Time)->
 	receive
-		{FXTables_PId,new_time,NewTime}->
+		{FXTablesProcess,new_time,NewTime}->
 			io:format("Heartbeat timer changed from:~p to:~p~n",[Time,NewTime]),
-			fx:heartbeat(FXTables_PId,TableNames,NewTime);
+			fx:heartbeat(FXTablesProcess,TableNames,NewTime);
 		{FXTables_PID,terminate} ->
 			io:format("******** Heartbeat terminated~n")
 	after Time ->
 		updater(TableNames),
-		fx:heartbeat(FXTables_PId,TableNames,Time)
+		fx:heartbeat(FXTablesProcess,TableNames,Time)
 	end.
 
 	updater([TN|TableNames])->

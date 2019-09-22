@@ -59,7 +59,7 @@ init(Parameters) ->
 %	io:format("Scape Parameters:~p~n",[Parameters]),
 	spawn(flatland,heartbeat,[self()]),
 	InitState = case Parameters of
-		{Polis_PId,Scape_Type,Physics,Metabolics} ->
+		{PolisProcess,Scape_Type,Physics,Metabolics} ->
 			Init_Avatars = world_init(Scape_Type,Physics,Metabolics),
 %			io:format("InitAvatars:~p~n",[InitAvatars]),
 			#scape{id=self(),
@@ -80,20 +80,20 @@ init(Parameters) ->
 %%                                      {stop, Reason, State}
 %% Description: Handling call messages
 %%--------------------------------------------------------------------
-handle_call({actuator,Exoself_PId,Command,Output},{From_PId,_Ref},State)->
+handle_call({actuator,ExoselfProcess,Command,Output},{FromProcess,_Ref},State)->
 	%timer:sleep(10),
 	%io:format("########################: ~p~n",[now()]),
-	{FitnessP,U_State}=case get(Exoself_PId) of
+	{FitnessP,U_State}=case get(ExoselfProcess) of
 		undefined ->
-			io:format("Unregistered Citizen:~p~n",[Exoself_PId]),
+			io:format("Unregistered Citizen:~p~n",[ExoselfProcess]),
 			{{0,0},State};
 		destroyed ->
-			erase(Exoself_PId),
-			io:format("Avatar:~p destroyed.~n",[Exoself_PId]),
+			erase(ExoselfProcess),
+			io:format("Avatar:~p destroyed.~n",[ExoselfProcess]),
 			{{0,1},State};
 		_ ->
 			Avatars = State#scape.avatars,
-			Avatar = lists:keyfind(Exoself_PId, 2, Avatars),
+			Avatar = lists:keyfind(ExoselfProcess, 2, Avatars),
 			U_Avatar = flatland:Command(Avatar#avatar{kills=0},Output),
 			case (U_Avatar#avatar.energy > 0) and (U_Avatar#avatar.age < 20000) of
 				true ->
@@ -104,60 +104,60 @@ handle_call({actuator,Exoself_PId,Command,Output},{From_PId,_Ref},State)->
 						false ->
 							0.001+Avatar#avatar.kills*1
 					end,
-					{{Fitness,0},State#scape{avatars = collision_detection(U_Avatar,lists:keyreplace(Exoself_PId, 2, Avatars, U_Avatar))}};
+					{{Fitness,0},State#scape{avatars = collision_detection(U_Avatar,lists:keyreplace(ExoselfProcess, 2, Avatars, U_Avatar))}};
 				false ->
 					io:format("Avatar:~p died at age:~p~n",[U_Avatar#avatar.id,U_Avatar#avatar.age]),
-					{{0,1},destroy_avatar(Exoself_PId,State)}
+					{{0,1},destroy_avatar(ExoselfProcess,State)}
 			end
 	end,
 	{reply,FitnessP,U_State};
-handle_call({multi_agent,update_agents,U_Avatars},{Exoself_PId,_Ref},State)->
+handle_call({multi_agent,update_agents,U_Avatars},{ExoselfProcess,_Ref},State)->
 	{reply,ok,State#scape{avatars=U_Avatars}};
-handle_call({get_all,avatars,Exoself_PId},{From_PId,_Ref},State)->
-	Reply =case get(Exoself_PId) of
+handle_call({get_all,avatars,ExoselfProcess},{FromProcess,_Ref},State)->
+	Reply =case get(ExoselfProcess) of
 		destroyed ->
 			destroyed;
 		_ ->
 			State#scape.avatars
 	end,
 	{reply,Reply,State};
-handle_call(tick,{From_PId,_Ref},State)->
+handle_call(tick,{FromProcess,_Ref},State)->
 	Avatars = State#scape.avatars,
 	U_Avatars = flatland:metabolics(Avatars,[]),
 	{reply,done,State#scape{avatars = U_Avatars}};
-handle_call({enter,Morphology,Specie_Id,CF,CT,TotNeurons,Exoself_PId},{From_PId,_Ref},State)->
-	{Reply,U_State}=case get(Exoself_PId) of
+handle_call({enter,Morphology,SpecieID,CF,CT,TotalNeurons,ExoselfProcess},{FromProcess,_Ref},State)->
+	{Reply,U_State}=case get(ExoselfProcess) of
 		entered ->
-			io:format("Already Registered Citizen:~p~n",[Exoself_PId]),
+			io:format("Already Registered Citizen:~p~n",[ExoselfProcess]),
 			{undefined,State};
 		undefined ->
-			Stats = {CF,CT,TotNeurons},
+			Stats = {CF,CT,TotalNeurons},
 			Avatars = State#scape.avatars,
-			put(Exoself_PId,entered),
-%			io:format("Avatar:~p entered~n",[Exoself_PId]),
+			put(ExoselfProcess,entered),
+%			io:format("Avatar:~p entered~n",[ExoselfProcess]),
 			Avatar=case get(visor) of
 				undefined ->
-					create_avatar(Morphology,Specie_Id,Exoself_PId,Stats,void);
-				{Visor_PId,Canvas} ->
-					visor:draw_avatar(Canvas,create_avatar(Morphology,Specie_Id,Exoself_PId,Stats,void))
+					create_avatar(Morphology,SpecieID,ExoselfProcess,Stats,void);
+				{VisorProcess,Canvas} ->
+					visor:draw_avatar(Canvas,create_avatar(Morphology,SpecieID,ExoselfProcess,Stats,void))
 			end,
 			io:format("Avatar2:~p~n",[Avatar]),
 			{done,State#scape{avatars = [Avatar|Avatars]}}
 	end,
 	{reply,Reply,U_State};
-handle_call({leave,Exoself_PId},{From_PId,_Ref},State)->
-	U_State=destroy_avatar(Exoself_PId,State),
-%	io:format("Avatar left:~p~n",[Exoself_PId]),
+handle_call({leave,ExoselfProcess},{FromProcess,_Ref},State)->
+	U_State=destroy_avatar(ExoselfProcess,State),
+%	io:format("Avatar left:~p~n",[ExoselfProcess]),
 	{reply,done,U_State};
-handle_call(get_canvas,{From_PId,_Ref},State)->
+handle_call(get_canvas,{FromProcess,_Ref},State)->
 	Reply=case get(visor) of
-		{_Visor_PId,Canvas}->
+		{_VisorProcess,Canvas}->
 			Canvas;
 		undefined ->
 			undefined
 	end,
 	{reply,Reply,State};
-handle_call({Visor_PId,unsubscribe},{From_PId,_Ref},State)->
+handle_call({VisorProcess,unsubscribe},{FromProcess,_Ref},State)->
 	erase(visor),
 	{reply,done,State};
 handle_call({stop,normal},_From, State)->
@@ -171,23 +171,23 @@ handle_call({stop,shutdown},_From,State)->
 %%                                      {stop, Reason, State}
 %% Description: Handling cast messages
 %%--------------------------------------------------------------------
-handle_cast({Visor_PId,subscribe,Canvas},State)->
-	put(visor,{Visor_PId,Canvas}),
+handle_cast({VisorProcess,subscribe,Canvas},State)->
+	put(visor,{VisorProcess,Canvas}),
 	U_Avatars = visor:draw_avatars(Canvas,State#scape.avatars,[]),
 	U_Objects = visor:draw_objects(Canvas,State#scape.objects,[]),
-	io:format("Visor:~p subscribed with canvas:~p~n",[Visor_PId,Canvas]),
+	io:format("Visor:~p subscribed with canvas:~p~n",[VisorProcess,Canvas]),
 	{noreply,State#scape{avatars = U_Avatars,objects = U_Objects}};
-handle_cast({Visor_PId,redraw,Filter},State)->
+handle_cast({VisorProcess,redraw,Filter},State)->
 	%io:format("~p~n",[now()]),
 	case get(visor) of
 		undefined ->
-			io:format("Scape:~p can't redraw, Visor:~p is not subscribed.~n",[State#scape.type,Visor_PId]);
-		{Visor_PId,_Canvas}->
+			io:format("Scape:~p can't redraw, Visor:~p is not subscribed.~n",[State#scape.type,VisorProcess]);
+		{VisorProcess,_Canvas}->
 			visor:redraw_avatars(Filter,State#scape.avatars),
 			visor:redraw_objects(Filter,State#scape.objects)
 	end,
 	{noreply,State};
-handle_cast({Visor_PId,unsubscribe},State)->
+handle_cast({VisorProcess,unsubscribe},State)->
 	erase(visor),
 	{noreply,State};
 handle_cast(tick,State)->
@@ -200,7 +200,7 @@ handle_cast(tick,State)->
 %			Plant=case get(visor) of
 %				undefined ->
 %					create_avatar(plant,plant,genotype:generate_UniqueId(),void,no_respawn);
-%				{Visor_PId,Canvas} ->
+%				{VisorProcess,Canvas} ->
 %					visor:draw_avatar(Canvas,create_avatar(plant,plant,genotype:generate_UniqueId(),void,no_respawn))
 %			end,
 %			io:format("Plant:~p~n",[Plant]),
@@ -248,15 +248,15 @@ code_change(_OldVsn, State, _Extra) ->
 %%--------------------------------------------------------------------
 %%% Internal functions
 %%--------------------------------------------------------------------
-heartbeat(Scape_PId)->
-	heartbeat(Scape_PId,100,0).
-heartbeat(Scape_PId,Tau,Time)->
+heartbeat(ScapeProcess)->
+	heartbeat(ScapeProcess,100,0).
+heartbeat(ScapeProcess,Tau,Time)->
 	receive 
 		{update_tau,NewTau}->
-			flatland:heartbeat(Scape_PId,Tau,Time)
+			flatland:heartbeat(ScapeProcess,Tau,Time)
 	after Tau ->
-		gen_server:cast(Scape_PId,tick),
-		flatland:heartbeat(Scape_PId,Tau,Time+Tau)
+		gen_server:cast(ScapeProcess,tick),
+		flatland:heartbeat(ScapeProcess,Tau,Time+Tau)
 	end.
 
 metabolics([Avatar|Avatars],Acc)->
@@ -273,7 +273,7 @@ metabolics([Avatar|Avatars],Acc)->
 							case get(visor) of
 								undefined->
 									done;
-								{_Visor_PId,_Canvas} ->
+								{_VisorProcess,_Canvas} ->
 									[gs:destroy(Id) || {_ObjType,Id,_Color,_Pivot,_Coords,_Parameter} <- Avatar#avatar.objects]
 							end,
 							metabolics(Avatars,Acc)
@@ -324,16 +324,16 @@ metabolics([],Acc)->
 		end.
 	
 new_loc()->
-	X = random:uniform(5000),
-	Y = random:uniform(5000),
+	X = rand:uniform(5000),
+	Y = rand:uniform(5000),
 	{X,Y}.
 	
 new_loc(XMin,XMax,YMin,YMax)->
-	X = random:uniform(XMax-XMin)+XMin,
-	Y = random:uniform(YMax-YMin)+YMin,
+	X = rand:uniform(XMax-XMin)+XMin,
+	Y = rand:uniform(YMax-YMin)+YMin,
 	{X,Y}.
 	
-remove(Avatar_PId,Avatar_PIdsP,Acc)->
+remove(AvatarProcess,AvatarProcessP,Acc)->
 	void.
 
 check_borders(Avatar,[{XMin,XMax},{YMin,YMax}])->
@@ -392,7 +392,7 @@ collision_detection(OperatorAvatar,EnergyAcc,Kills,[Avatar|Avatars],Acc)->
 					case get(visor) of
 						undefined->
 							done;
-						{_Visor_PId,_Canvas} ->
+						{_VisorProcess,_Canvas} ->
 							[gs:destroy(Id) || {_ObjType,Id,_Color,_Pivot,_Coords,_Parameter} <- U_Avatar#avatar.objects]
 					end,
 					put(U_Avatar#avatar.id,destroyed),
@@ -409,7 +409,7 @@ collision_detection(OperatorAvatar,EnergyAcc,Kills,[Avatar|Avatars],Acc)->
 							case get(visor) of
 								undefined->
 									done;
-								{_Visor_PId,_Canvas} ->
+								{_VisorProcess,_Canvas} ->
 									[gs:destroy(Id) || {_ObjType,Id,_Color,_Pivot,_Coords,_Parameter} <- U_Avatar#avatar.objects]
 							end,
 							collision_detection(U_OperatorAvatar,EnergyAcc+Energy,Kills+Kill_Score,Avatars,Acc);
@@ -423,7 +423,7 @@ collision_detection(OperatorAvatar,EnergyAcc,Kills,[Avatar|Avatars],Acc)->
 							case get(visor) of
 								undefined->
 									done;
-								{_Visor_PId,_Canvas} ->
+								{_VisorProcess,_Canvas} ->
 									[gs:destroy(Id) || {_ObjType,Id,_Color,_Pivot,_Coords,_Parameter} <- U_Avatar#avatar.objects]
 							end,
 							collision_detection(U_OperatorAvatar,EnergyAcc+Energy,Kills,Avatars,Acc);
@@ -448,21 +448,21 @@ collision_detection(OperatorAvatar,EnergyAcc,KillsAcc,[],Acc)->
 
 create_avatar(Morphology)->
 	create_avatar(Morphology,Morphology,genotype:generate_UniqueId(),{cf,ct,-1},respawn,undefined).
-create_avatar(Morphology,Specie_Id)->
+create_avatar(Morphology,SpecieID)->
 	Stats = {cf,ct,-1},
-	create_avatar(Morphology,Specie_Id,genotype:generate_UniqueId(),Stats,respawn,undefined).
-create_avatar(Morphology,Specie_Id,Id,Stats,Parameters)->
-	create_avatar(Morphology,Specie_Id,Id,Stats,Parameters,undefined).
-create_avatar(Morphology,Specie_Id,Id,{CF,CT,TotNeurons},void,InitEnergy) when (Morphology == predator)  or (Morphology == prey) or (Morphology == automaton)->
+	create_avatar(Morphology,SpecieID,genotype:generate_UniqueId(),Stats,respawn,undefined).
+create_avatar(Morphology,SpecieID,Id,Stats,Parameters)->
+	create_avatar(Morphology,SpecieID,Id,Stats,Parameters,undefined).
+create_avatar(Morphology,SpecieID,Id,{CF,CT,TotalNeurons},void,InitEnergy) when (Morphology == predator)  or (Morphology == prey) or (Morphology == automaton)->
 	case Morphology of
 		predator->
 			io:format("Creating Predator:~p~n",[{CF,CT,Id}]),
-			%{CF,CT,TotNeurons} = Stats,
+			%{CF,CT,TotalNeurons} = Stats,
 			Color = red,
 			%Color=visor:ct2color(CT),
-			Loc = {X,Y} = {random:uniform(400)+300,random:uniform(400)+300},
+			Loc = {X,Y} = {rand:uniform(400)+300,rand:uniform(400)+300},
 			Direction ={DX,DY} = {-1/math:sqrt(2),-1/math:sqrt(2)},
-			%Loc = {X,Y} = {random:uniform(round(XMax/2)) + XMax/2 -R,random:uniform(round(YMax/2))+YMax/2 -R},
+			%Loc = {X,Y} = {rand:uniform(round(XMax/2)) + XMax/2 -R,rand:uniform(round(YMax/2))+YMax/2 -R},
 			Energy =case InitEnergy of
 				undefined -> 
 					1000;
@@ -490,13 +490,13 @@ create_avatar(Morphology,Specie_Id,Id,{CF,CT,TotNeurons},void,InitEnergy) when (
 				objects = Objects,
 				actuators = CF,
 				sensors =CT,
-				stats = TotNeurons
+				stats = TotalNeurons
 			};
 		prey ->
 			io:format("Creating Prey:~p~n",[{CF,CT,Id}]),
-			%{CF,CT,TotNeurons} = Stats,
+			%{CF,CT,TotalNeurons} = Stats,
 			Direction = {DX,DY} = {1/math:sqrt(2),1/math:sqrt(2)},
-			{X,Y} = {random:uniform(800),random:uniform(500)},
+			{X,Y} = {rand:uniform(800),rand:uniform(500)},
 			Energy =case InitEnergy of
 				undefined -> 
 					1000;
@@ -531,12 +531,12 @@ create_avatar(Morphology,Specie_Id,Id,{CF,CT,TotNeurons},void,InitEnergy) when (
 				objects = Objects,
 				actuators = CF,
 				sensors =CT,
-				stats = TotNeurons
+				stats = TotalNeurons
 			};
 		automaton ->
-			Angle = random:uniform()*2*math:pi(),
+			Angle = rand:uniform()*2*math:pi(),
 			Direction = {DX,DY}={(1/math:sqrt(2))*math:cos(Angle) - (1/math:sqrt(2))*math:sin(Angle),(1/math:sqrt(2))*math:sin(Angle) + (1/math:sqrt(2))*math:cos(Angle)},
-			{X,Y} = {400+random:uniform(1120),200+random:uniform(580)},
+			{X,Y} = {400+rand:uniform(1120),200+rand:uniform(580)},
 			Mass = 10,
 			R = 10,
 			Color = blue,
@@ -551,15 +551,15 @@ create_avatar(Morphology,Specie_Id,Id,{CF,CT,TotNeurons},void,InitEnergy) when (
 				objects = Objects
 			}
 	end;
-create_avatar(Morphology,Specie_Id,Avatar_Id,{InitEnergy,InitLoc},RespawnFlag,Metabolics) when (Morphology == plant) or (Morphology == poison) ->
+create_avatar(Morphology,SpecieID,AvatarID,{InitEnergy,InitLoc},RespawnFlag,Metabolics) when (Morphology == plant) or (Morphology == poison) ->
 	case Morphology of
 		plant ->
 			io:format("Creating Plant~n"),
 			Direction={1/math:sqrt(2),1/math:sqrt(2)},
-			%{X,Y} = Loc = {random:uniform(5000),random:uniform(5000)},
+			%{X,Y} = Loc = {rand:uniform(5000),rand:uniform(5000)},
 			case InitLoc of
 				undefined ->
-					{X,Y} = Loc = {random:uniform(800),random:uniform(500)};
+					{X,Y} = Loc = {rand:uniform(800),rand:uniform(500)};
 				Val ->
 					{X,Y} = Loc = Val
 			end,
@@ -580,7 +580,7 @@ create_avatar(Morphology,Specie_Id,Avatar_Id,{InitEnergy,InitLoc},RespawnFlag,Me
 			%Objects = [{line,undefined,green,{0+X,0+Y},[{-R+X,-R+Y},{R+X,R+Y}],void},{line,undefined,green,{0+X,0+Y},[{-R+X,R+Y},{R+X,-R+Y}],void}],
 			Objects = [{circle,undefined,green,{X,Y},[{X,Y}],R}],
 			#avatar{
-				id = Avatar_Id,
+				id = AvatarID,
 				type = Morphology,
 				energy = Energy,
 				food = 0,
@@ -597,7 +597,7 @@ create_avatar(Morphology,Specie_Id,Avatar_Id,{InitEnergy,InitLoc},RespawnFlag,Me
 			Direction={1/math:sqrt(2),1/math:sqrt(2)},
 			case InitLoc of
 				undefined ->
-					{X,Y} = Loc = {random:uniform(800),random:uniform(500)};
+					{X,Y} = Loc = {rand:uniform(800),rand:uniform(500)};
 				Val ->
 					{X,Y} = Loc = Val
 			end,
@@ -618,7 +618,7 @@ create_avatar(Morphology,Specie_Id,Avatar_Id,{InitEnergy,InitLoc},RespawnFlag,Me
 			%Objects = [{line,undefined,green,{0+X,0+Y},[{-R+X,-R+Y},{R+X,R+Y}],void},{line,undefined,green,{0+X,0+Y},[{-R+X,R+Y},{R+X,-R+Y}],void}],
 			Objects = [{circle,undefined,black,{X,Y},[{X,Y}],R}],
 			#avatar{
-				id = Avatar_Id,
+				id = AvatarID,
 				type = Morphology,
 				energy = Energy,
 				loc = Loc,
@@ -628,7 +628,7 @@ create_avatar(Morphology,Specie_Id,Avatar_Id,{InitEnergy,InitLoc},RespawnFlag,Me
 				state = RespawnFlag
 			}
 	end;
-create_avatar(Morphology,Specie_Id,Id,undefined,Parameters,undefined) when (Morphology == rock) or (Morphology == wall) or (Morphology == fire_pit) or (Morphology == beacon)->
+create_avatar(Morphology,SpecieID,Id,undefined,Parameters,undefined) when (Morphology == rock) or (Morphology == wall) or (Morphology == fire_pit) or (Morphology == beacon)->
 	case Morphology of
 		rock ->
 			io:format("Creating Rock~n"),
@@ -678,27 +678,27 @@ create_avatar(Morphology,Specie_Id,Id,undefined,Parameters,undefined) when (Morp
 			}
 	end.
 
-destroy_avatar(ExoSelf_PId,State)->
+destroy_avatar(ExoSelfProcess,State)->
 	Avatars = State#scape.avatars,
-	case get(ExoSelf_PId) of
+	case get(ExoSelfProcess) of
 		undefined ->
-			io:format("Destroy Avatar in Scape:: Undefined:~p~n",[ExoSelf_PId]);
-		entered->io:format("Destroying avatar associated with:~p~n",[ExoSelf_PId]),
-			Avatar = lists:keyfind(ExoSelf_PId, 2, Avatars),
-			erase(ExoSelf_PId),
+			io:format("Destroy Avatar in Scape:: Undefined:~p~n",[ExoSelfProcess]);
+		entered->io:format("Destroying avatar associated with:~p~n",[ExoSelfProcess]),
+			Avatar = lists:keyfind(ExoSelfProcess, 2, Avatars),
+			erase(ExoSelfProcess),
 			case get(visor) of
 				undefined->
 					done;
-				{Visor_PId,_Canvas} ->
+				{VisorProcess,_Canvas} ->
 					io:format("Avatar:~p~n",[Avatar]),
 					[gs:destroy(Id) || {_ObjType,Id,_Color,_Pivot,_Coords,_Parameter} <- Avatar#avatar.objects]
 			end
 	end,
-	State#scape{avatars = lists:keydelete(ExoSelf_PId, 2, Avatars)}.
+	State#scape{avatars = lists:keydelete(ExoSelfProcess, 2, Avatars)}.
 
 respawn_avatar(A)->
 %	io:format("Respawning:~p~n",[A]),
-	{X,Y} = {random:uniform(800),random:uniform(500)},
+	{X,Y} = {rand:uniform(800),rand:uniform(500)},
 	case A#avatar.type of
 		plant ->
 			A#avatar{
@@ -716,7 +716,7 @@ respawn_avatar(A)->
 
 respawn_avatar(Avatars,A)->
 %	io:format("Respawning:~p~n",[A]),
-	%{X,Y} = {random:uniform(800),random:uniform(800)},
+	%{X,Y} = {rand:uniform(800),rand:uniform(800)},
 	OAvatars = [A || A <- Avatars, (A#avatar.type==rock) or (A#avatar.type==pillar) or (A#avatar.type==fire_pit)],
 	{X,Y} = return_valid(OAvatars),
 	case A#avatar.type of
@@ -735,9 +735,9 @@ respawn_avatar(Avatars,A)->
 	end.
 
 	return_valid(OAvatars)->
-		case return_valid(OAvatars,{random:uniform(800),random:uniform(500)}) of
+		case return_valid(OAvatars,{rand:uniform(800),rand:uniform(500)}) of
 			undefined ->
-				return_valid(OAvatars,{random:uniform(800),random:uniform(500)});
+				return_valid(OAvatars,{rand:uniform(800),rand:uniform(500)});
 			Loc ->
 				Loc
 		end.
@@ -765,7 +765,7 @@ move(Avatar,S)->
 			S*0.9
 	end,
 	Energy = Avatar#avatar.energy,
-	TotNeurons = Avatar#avatar.stats,
+	TotalNeurons = Avatar#avatar.stats,
 	U_Energy = Energy - 0.1*(math:sqrt(math:pow(DX*Speed,2)+math:pow(DY*Speed,2)))-0.1,%TODO
 	%io:format("self():~p Energy burned:~p~n",[self(),abs(Speed)]),
 	U_Loc = {LX+(DX*Speed),LY+(DY*Speed)},
@@ -775,7 +775,7 @@ move(Avatar,S)->
 translate(Avatar,{DX,DY})->
 	{LX,LY} = Avatar#avatar.loc,
 	Energy = Avatar#avatar.energy,
-	TotNeurons = Avatar#avatar.stats,
+	TotalNeurons = Avatar#avatar.stats,
 	U_Energy = Energy - 0.1*(math:sqrt(math:pow(DX,2),math:pow(DY,2))) - 0.1,%TODO
 	U_Loc = {LX+DX,LY+DY},
 	U_Objects=[{ObjName,Id,Color,{PX+DX,PY+DY},[{X+DX,Y+DY}||{X,Y}<-Coords],P}||{ObjName,Id,Color,{PX,PY},Coords,P}<-Avatar#avatar.objects],
@@ -786,7 +786,7 @@ rotate(Avatar,A)->
 	Angle = A*Ratio,
 	{DX,DY} =Avatar#avatar.direction,
 	Energy = Avatar#avatar.energy,
-	TotNeurons = Avatar#avatar.stats,
+	TotalNeurons = Avatar#avatar.stats,
 	U_Energy = Energy  - 0.1*(abs(Angle))-0.1,%TODO
 	U_Direction = {DX*math:cos(Angle) - DY*math:sin(Angle),DX*math:sin(Angle) + DY*math:cos(Angle)},
 	U_Objects = rotation(Avatar#avatar.objects,Angle,[]),

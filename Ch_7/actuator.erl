@@ -9,28 +9,28 @@
 -compile(export_all).
 -include("records.hrl").
 
-gen(ExoSelf_PId,Node)->
-	spawn(Node,?MODULE,prep,[ExoSelf_PId]).
+gen(ExoSelfProcess,Node)->
+	spawn(Node,?MODULE,prep,[ExoSelfProcess]).
 
-prep(ExoSelf_PId) -> 
+prep(ExoSelfProcess) -> 
 	receive 
-		{ExoSelf_PId,{Id,Cx_PId,Scape,ActuatorName,Fanin_PIds}} ->
-			loop(Id,ExoSelf_PId,Cx_PId,Scape,ActuatorName,{Fanin_PIds,Fanin_PIds},[])
+		{ExoSelfProcess,{Id,CortexProcess,Scape,ActuatorName,FaninProcess}} ->
+			loop(Id,ExoSelfProcess,CortexProcess,Scape,ActuatorName,{FaninProcess,FaninProcess},[])
 	end.
 %When gen/2 is executed it spawns the actuator element and immediately begins to wait for its initial state message.
 
-loop(Id,ExoSelf_PId,Cx_PId,Scape,AName,{[From_PId|Fanin_PIds],MFanin_PIds},Acc) ->
+loop(Id,ExoSelfProcess,CortexProcess,Scape,ActuatorName,{[FromProcess|FaninProcess],MFaninProcess},Acc) ->
 	receive
-		{From_PId,forward,Input} ->
-			loop(Id,ExoSelf_PId,Cx_PId,Scape,AName,{Fanin_PIds,MFanin_PIds},lists:append(Input,Acc));
-		{ExoSelf_PId,terminate} ->
+		{FromProcess,forward,Input} ->
+			loop(Id,ExoSelfProcess,CortexProcess,Scape,ActuatorName,{FaninProcess,MFaninProcess},lists:append(Input,Acc));
+		{ExoSelfProcess,terminate} ->
 			ok
 	end;
-loop(Id,ExoSelf_PId,Cx_PId,Scape,AName,{[],MFanin_PIds},Acc)->
-	{Fitness,EndFlag} = actuator:AName(lists:reverse(Acc),Scape),
-	Cx_PId ! {self(),sync,Fitness,EndFlag},
-	loop(Id,ExoSelf_PId,Cx_PId,Scape,AName,{MFanin_PIds,MFanin_PIds},[]).
-%The actuator process gathers the control signals from the neurons, appending them to the accumulator. The order in which the signals are accumulated into a vector is in the same order as the neuron ids are stored within NIds. Once all the signals have been gathered, the actuator sends cortex the sync signal, executes its function, and then again begins to wait for the neural signals from the output layer by reseting the Fanin_PIds from the second copy of the list.
+loop(Id,ExoSelfProcess,CortexProcess,Scape,ActuatorName,{[],MFaninProcess},Acc)->
+	{Fitness,EndFlag} = actuator:ActuatorName(lists:reverse(Acc),Scape),
+	CortexProcess ! {self(),sync,Fitness,EndFlag},
+	loop(Id,ExoSelfProcess,CortexProcess,Scape,ActuatorName,{MFaninProcess,MFaninProcess},[]).
+%The actuator process gathers the control signals from the neurons, appending them to the accumulator. The order in which the signals are accumulated into a vector is in the same order as the neuron ids are stored within NeuronIDs. Once all the signals have been gathered, the actuator sends cortex the sync signal, executes its function, and then again begins to wait for the neural signals from the output layer by reseting the FaninProcess from the second copy of the list.
 
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%% ACTUATORS %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%

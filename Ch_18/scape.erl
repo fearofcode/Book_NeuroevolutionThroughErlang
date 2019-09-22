@@ -9,24 +9,24 @@
 -compile(export_all).
 -include("records.hrl").
 
-gen(ExoSelf_PId,Node)->
-	spawn(Node,?MODULE,prep,[ExoSelf_PId]).
+gen(ExoSelfProcess,Node)->
+	spawn(Node,?MODULE,prep,[ExoSelfProcess]).
 
-prep(ExoSelf_PId) ->
+prep(ExoSelfProcess) ->
 	receive 
-		{ExoSelf_PId,Name} ->
-			scape:Name(ExoSelf_PId)
+		{ExoSelfProcess,Name} ->
+			scape:Name(ExoSelfProcess)
 	end.
 
-xor_sim(ExoSelf_PId)->
+xor_sim(ExoSelfProcess)->
 	XOR = [{[-1,-1],[-1]},{[1,-1],[1]},{[-1,1],[1]},{[1,1],[-1]}],
-	xor_sim(ExoSelf_PId,{XOR,XOR},0).
+	xor_sim(ExoSelfProcess,{XOR,XOR},0).
 	
-xor_sim(ExoSelf_PId,{[{Input,CorrectOutput}|XOR],MXOR},ErrAcc) ->
+xor_sim(ExoSelfProcess,{[{Input,CorrectOutput}|XOR],MXOR},ErrAcc) ->
 	receive 
 		{From,sense} ->
 			From ! {self(),percept,Input},
-			xor_sim(ExoSelf_PId,{[{Input,CorrectOutput}|XOR],MXOR},ErrAcc);
+			xor_sim(ExoSelfProcess,{[{Input,CorrectOutput}|XOR],MXOR},ErrAcc);
 		{From,action,Output}->
 			Error = sse(Output,CorrectOutput,0),
 			case XOR of
@@ -34,12 +34,12 @@ xor_sim(ExoSelf_PId,{[{Input,CorrectOutput}|XOR],MXOR},ErrAcc) ->
 					SSE = ErrAcc+Error,
 					Fitness = 1/(SSE+0.000001),
 					From ! {self(),Fitness,1},
-					xor_sim(ExoSelf_PId,{MXOR,MXOR},0);
+					xor_sim(ExoSelfProcess,{MXOR,MXOR},0);
 				_ ->
 					From ! {self(),0,0},
-					xor_sim(ExoSelf_PId,{XOR,MXOR},ErrAcc+Error)
+					xor_sim(ExoSelfProcess,{XOR,MXOR},ErrAcc+Error)
 			end;
-		{ExoSelf_PId,terminate}->
+		{ExoSelfProcess,terminate}->
 			ok
 	end.
 
@@ -51,13 +51,13 @@ xor_sim(ExoSelf_PId,{[{Input,CorrectOutput}|XOR],MXOR},ErrAcc) ->
 		SSEAcc.
 
 -record(pb_state,{cpos=0,cvel=0,p1_angle=3.6*(2*math:pi()/360),p1_vel=0,p2_angle=0,p2_vel=0,time_step=0,goal_steps=90000,fitness_acc=0}).
-pb_sim(ExoSelf_PId)->
+pb_sim(ExoSelfProcess)->
 	random:seed(now()),
-	pb_sim(ExoSelf_PId,#pb_state{}).
+	pb_sim(ExoSelfProcess,#pb_state{}).
 	
-pb_sim(ExoSelf_PId,S)->
+pb_sim(ExoSelfProcess,S)->
 	receive
-		{From_PId,sense, [Parameter]}->%io:format("Sense request received:~p~n",[From_PId]),
+		{FromProcess,sense, [Parameter]}->%io:format("Sense request received:~p~n",[FromProcess]),
 			SenseSignal=case Parameter of
 				cpos -> [S#pb_state.cpos];
 				cvel -> [S#pb_state.cvel];
@@ -70,9 +70,9 @@ pb_sim(ExoSelf_PId,S)->
 				4 -> [S#pb_state.cpos,S#pb_state.cvel,S#pb_state.p1_angle,S#pb_state.p1_vel];
 				6 -> [S#pb_state.cpos,S#pb_state.cvel,S#pb_state.p1_angle,S#pb_state.p1_vel,S#pb_state.p2_angle,S#pb_state.p2_vel]
 			end,
-			From_PId ! {self(),percept,SenseSignal},
-			scape:pb_sim(ExoSelf_PId,S);
-		{From_PId,push,[Damping_Flag,DPB_Flag],[F]}->
+			FromProcess ! {self(),percept,SenseSignal},
+			scape:pb_sim(ExoSelfProcess,S);
+		{FromProcess,push,[Damping_Flag,DPB_Flag],[F]}->
 			AL = 2*math:pi()*(36/360),
 			U_S=sm_DoublePole(F*10,S,2),
 			TimeStep=U_S#pb_state.time_step,
@@ -84,11 +84,11 @@ pb_sim(ExoSelf_PId,S)->
 				true ->
 					case (TimeStep > U_S#pb_state.goal_steps) of
 						true ->%Fitness goal reached.
-							From_PId ! {self(),goal_reached,1},
-							scape:pb_sim(ExoSelf_PId,#pb_state{});
+							FromProcess ! {self(),goal_reached,1},
+							scape:pb_sim(ExoSelfProcess,#pb_state{});
 						false ->
-							From_PId ! {self(),0,1},
-							scape:pb_sim(ExoSelf_PId,#pb_state{})
+							FromProcess ! {self(),0,1},
+							scape:pb_sim(ExoSelfProcess,#pb_state{})
 					end;
 				false ->
 					Fitness = case Damping_Flag of
@@ -104,10 +104,10 @@ pb_sim(ExoSelf_PId,S)->
 							end,
 							Fitness1*0.1 + Fitness2*0.9
 					end,		
-					From_PId ! {self(),Fitness,0},
-					scape:pb_sim(ExoSelf_PId,U_S#pb_state{fitness_acc=U_S#pb_state.fitness_acc+Fitness})
+					FromProcess ! {self(),Fitness,0},
+					scape:pb_sim(ExoSelfProcess,U_S#pb_state{fitness_acc=U_S#pb_state.fitness_acc+Fitness})
 			end;
-		{ExoSelf_PId,terminate} ->
+		{ExoSelfProcess,terminate} ->
 			ok
 	end.
 	
@@ -156,12 +156,12 @@ sm_DoublePole(F,S,SimStepIndex)->
 	
 -record(dtm_sector,{id,description=[],r}).
 -record(dtm_state,{agent_position=[0,0],agent_direction=90,sectors=[],tot_runs=60,run_index=1,switch_event,switched=false,step_index=0,fitness_acc=0}).
-dtm_sim(ExoSelf_PId)->io:format("Starting dtm_sim~n"),
+dtm_sim(ExoSelfProcess)->io:format("Starting dtm_sim~n"),
 	random:seed(now()),
 	%io:format("Starting pb_sim:~p~n",[self()]),
-	dtm_sim(ExoSelf_PId,#dtm_state{switch_event=20+random:uniform(20), sectors=set_tmaze_sectors()}).
+	dtm_sim(ExoSelfProcess,#dtm_state{switch_event=20+rand:uniform(20), sectors=set_tmaze_sectors()}).
 
-dtm_sim(ExoSelf_PId,S) when (S#dtm_state.run_index == S#dtm_state.switch_event) and (S#dtm_state.switched==false)->
+dtm_sim(ExoSelfProcess,S) when (S#dtm_state.run_index == S#dtm_state.switch_event) and (S#dtm_state.switched==false)->
 	%io:format("Switch event:~p~n",[S#dtm_state.switch_event]),
 	Sectors=S#dtm_state.sectors,
 	SectorA=lists:keyfind([3,3],2,Sectors),
@@ -169,10 +169,10 @@ dtm_sim(ExoSelf_PId,S) when (S#dtm_state.run_index == S#dtm_state.switch_event) 
 	U_SectorA=SectorA#dtm_sector{r=SectorB#dtm_sector.r},
 	U_SectorB=SectorB#dtm_sector{r=SectorA#dtm_sector.r},
 	U_Sectors=lists:keyreplace([-3,3],2,lists:keyreplace([3,3],2,Sectors,U_SectorA),U_SectorB),
-	scape:dtm_sim(ExoSelf_PId,S#dtm_state{sectors=U_Sectors, switched=true});
-dtm_sim(ExoSelf_PId,S)->
+	scape:dtm_sim(ExoSelfProcess,S#dtm_state{sectors=U_Sectors, switched=true});
+dtm_sim(ExoSelfProcess,S)->
 	receive
-		{From_PId,sense,Parameters}->
+		{FromProcess,sense,Parameters}->
 			%io:format("Sense:~p~n",[Parameters]),
 			APos = S#dtm_state.agent_position,
 			ADir = S#dtm_state.agent_direction,
@@ -189,9 +189,9 @@ dtm_sim(ExoSelf_PId,S)->
 					[Sector#dtm_sector.r]
 			end,
 			%io:format("Position:~p SenseSignal:~p ",[APos,SenseSignal]),
-			From_PId ! {self(),percept,SenseSignal},
-			scape:dtm_sim(ExoSelf_PId,S);
-		{From_PId,move,_Parameters,[Move]}->
+			FromProcess ! {self(),percept,SenseSignal},
+			scape:dtm_sim(ExoSelfProcess,S);
+		{FromProcess,move,_Parameters,[Move]}->
 			%timer:sleep(1000),
 			APos = S#dtm_state.agent_position,
 			ADir = S#dtm_state.agent_direction,
@@ -213,59 +213,59 @@ dtm_sim(ExoSelf_PId,S)->
 					Updated_RunIndex=S#dtm_state.run_index+1,
 					case Updated_RunIndex > S#dtm_state.tot_runs of
 						true ->
-							From_PId ! {self(),Sector#dtm_sector.r+NavigationReward,1},
+							FromProcess ! {self(),Sector#dtm_sector.r+NavigationReward,1},
 							U_S = #dtm_state{
-								switch_event=20+random:uniform(20),
+								switch_event=20+rand:uniform(20),
 								sectors=set_tmaze_sectors(),
 								switched=false
 							},
-							dtm_sim(ExoSelf_PId,U_S);
+							dtm_sim(ExoSelfProcess,U_S);
 						false ->
-							From_PId ! {self(),Sector#dtm_sector.r+NavigationReward,0},
+							FromProcess ! {self(),Sector#dtm_sector.r+NavigationReward,0},
 							U_S = S#dtm_state{
 								agent_position=[0,0],
 								agent_direction=90,
 								run_index=Updated_RunIndex,
 								step_index = 0
 							},
-							dtm_sim(ExoSelf_PId,U_S)
+							dtm_sim(ExoSelfProcess,U_S)
 					end;
 				(APos == [3,3]) or (APos == [-3,3]) ->
 					Updated_RunIndex=S#dtm_state.run_index+1,
 					case Updated_RunIndex > S#dtm_state.tot_runs of
 						true ->
-							From_PId ! {self(),Sector#dtm_sector.r+NavigationReward,1},
+							FromProcess ! {self(),Sector#dtm_sector.r+NavigationReward,1},
 							U_S = #dtm_state{
-								switch_event=20+random:uniform(20),
+								switch_event=20+rand:uniform(20),
 								sectors=set_tmaze_sectors()
 							},
-							dtm_sim(ExoSelf_PId,U_S);
+							dtm_sim(ExoSelfProcess,U_S);
 						false ->
-							From_PId ! {self(),Sector#dtm_sector.r+NavigationReward,0},
+							FromProcess ! {self(),Sector#dtm_sector.r+NavigationReward,0},
 							U_S = S#dtm_state{
 								agent_position=[0,0],
 								agent_direction=90,
 								run_index=Updated_RunIndex,
 								step_index = 0
 							},
-							dtm_sim(ExoSelf_PId,U_S)
+							dtm_sim(ExoSelfProcess,U_S)
 					end;
 				Move > 0.33 -> %clockwise
 					NewDir=(S#dtm_state.agent_direction + 270) rem 360,
-					From_PId ! {self(),0,0},
+					FromProcess ! {self(),0,0},
 					U_S = S#dtm_state{
 						agent_direction=NewDir,
 						step_index = U_StepIndex
 					},
-					dtm_sim(ExoSelf_PId,U_S);
+					dtm_sim(ExoSelfProcess,U_S);
 				Move < -0.33 -> %counterclockwise
 					NewDir=(S#dtm_state.agent_direction + 90) rem 360,
-					From_PId ! {self(),0,0},
+					FromProcess ! {self(),0,0},
 					U_S = S#dtm_state{
 						agent_direction=NewDir,
 						step_index = U_StepIndex
 					},
-					dtm_sim(ExoSelf_PId,U_S);
+					dtm_sim(ExoSelfProcess,U_S);
 				true -> %forward
 					case NextSec of
 						[] -> %wall crash/restart_state
@@ -273,33 +273,33 @@ dtm_sim(ExoSelf_PId,S)->
 							Updated_RunIndex=S#dtm_state.run_index+1,
 							case Updated_RunIndex > S#dtm_state.tot_runs of
 								true ->
-									From_PId ! {self(),0+NavigationReward,1},
+									FromProcess ! {self(),0+NavigationReward,1},
 									U_S = #dtm_state{
-										switch_event=20+random:uniform(20),
+										switch_event=20+rand:uniform(20),
 										sectors=set_tmaze_sectors(),
 										switched=false
 									},
-									dtm_sim(ExoSelf_PId,U_S);
+									dtm_sim(ExoSelfProcess,U_S);
 								false ->
-									From_PId ! {self(),0+NavigationReward,0},
+									FromProcess ! {self(),0+NavigationReward,0},
 									U_S = S#dtm_state{
 										agent_position=[0,0],
 										agent_direction=90,
 										run_index=Updated_RunIndex,
 										step_index = 0
 									},
-									dtm_sim(ExoSelf_PId,U_S)
+									dtm_sim(ExoSelfProcess,U_S)
 							end;
 						_ -> %move
-							From_PId ! {self(),0,0},
+							FromProcess ! {self(),0,0},
 							U_S = S#dtm_state{
 								agent_position=NextSec,
 								step_index = U_StepIndex
 							},
-							dtm_sim(ExoSelf_PId,U_S)
+							dtm_sim(ExoSelfProcess,U_S)
 					end
 			end;
-		{ExoSelf_PId,terminate} ->
+		{ExoSelfProcess,terminate} ->
 			ok
 	end.
 
